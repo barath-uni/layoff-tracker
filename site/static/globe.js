@@ -631,8 +631,9 @@
     if (e.src && e.src.length) {
       var ul = el("ul", "c-src");
       e.src.forEach(function (s) {
-        var item = el("li"), a = el("a"); a.href = s[1]; a.target = "_blank"; a.rel = "noopener nofollow";
-        a.appendChild(el("span", null, s[0])); a.appendChild(el("span", null, "↗")); item.appendChild(a); ul.appendChild(item);
+        var item = el("li"), a = el("a"); a.href = s[1] || "/company/" + e.s + "/";
+        if (s[1]) { a.target = "_blank"; a.rel = "noopener nofollow"; }
+        a.appendChild(el("span", null, s[0])); a.appendChild(el("span", null, s[1] ? "↗" : "→")); item.appendChild(a); ul.appendChild(item);
       });
       cardEl.appendChild(ul);
     }

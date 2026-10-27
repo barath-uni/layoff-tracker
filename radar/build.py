@@ -354,13 +354,16 @@ def week_stats(evs):
     return people, len({x["slug"] for x in wk}), top
 
 
-def slim_events(evs):
+def slim_events(evs, lean=False):
+    """Event rows for the front-end. lean (home): no headline, and long redirect URLs dropped (the card links to the company page)."""
+    def src(r):
+        return [r["publisher"], r["url"]] if not lean or len(r["url"] or "") <= 160 else [r["publisher"]]
     return [{"s": x["slug"], "c": x["company"], "d": x["start"], "n": x["headcount"], "lo": x["low"], "hi": x["high"],
              "p": x["pct"], "ps": x["pct_show"], "pn": x["pct_note"], "l": x["label"], "cf": x["confidence"],
-             "i": x["industry"], "k": x["country"], "h": x["headline"], "np": x["n_publishers"],
+             "i": x["industry"], "k": x["country"], "np": x["n_publishers"],
              "la": x["lat"], "lo2": x["lon"], "dm": domain(x["slug"]), "cc": iso(x["country"]),
              "pc": 1 if x.get("place") and x.get("place") == x["country"] else 0,
-             "src": [[r["publisher"], r["url"]] for r in x["sources"][:3]]} for x in evs]
+             "src": [src(r) for r in x["sources"][:3]]} | ({} if lean else {"h": x["headline"]}) for x in evs]
 
 
 def json_script(id_, obj):
@@ -457,7 +460,7 @@ def home(evs, s, updated, industries, countries):
 <div class="drawer" data-dive hidden><div class="drawer-in" role="dialog" aria-modal="true" aria-labelledby="dive-title" tabindex="-1"></div></div>
 <div class="toast" role="status" aria-live="polite"></div>
 <noscript><p class="nojs">This globe needs JavaScript. <a href="/insights/">See the charts and the full list instead</a>.</p></noscript>
-{json_script("events", slim_events(evs))}
+{json_script("events", slim_events(evs, lean=True))}
 {json_script("warn", early_warnings(evs))}
 {json_script("weekly", {"w": s["weekly"], "y0": (YEAR_START - timedelta(days=YEAR_START.weekday())).isoformat(), "today": TODAY.isoformat(), "y": y})}"""
     title = f"{fmt(s['ytd'])} people laid off in {y}: {NAME}"
