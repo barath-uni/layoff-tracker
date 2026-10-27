@@ -33,7 +33,9 @@ Requirements: Python 3.11+ and Pillow (for share cards). Everything else is stdl
 - `radar/build.py`, `radar/og.py`: static site, 1200×630 share cards and 1080×1920 stories
 - `radar/places.py`: curated HQ cities and employee totals (for "% of staff"), Nominatim geocoding with a DB cache
 - `radar/config.py`: brand name and site URL
-- `site/static/globe.js`: front-page globe/map (d3-geo on canvas, vendored), live counter and feed
+- `site/static/globe.js`: front-page globe/map (d3-geo on canvas, vendored): zoom (wheel, pinch, +/−), pan/rotate, labels at higher zoom, the click panel, live counter and feed
+- `site/static/gate.js`: "Dive deeper" table preview, the blurred rows and the email-only sign-up (soft gate, unlocks client-side)
+- `functions/api/[[route]].js`: Cloudflare Pages Function for `/api/signup`, `/api/event` and `/api/stats` (D1 or KV)
 - `site/static/`: CSS, JS, fonts. `research/notes.md`: competitor and source research
 - `data/` (gitignored): SQLite DB and HTTP cache. `dist/` (gitignored): build output
 
@@ -51,3 +53,26 @@ One-time setup:
 4. Run the workflow once by hand (Actions → refresh → Run workflow) to seed the DB. After that it runs hourly.
 
 The first run on an empty cache re-scans the whole year of news and geocodes places (OpenStreetMap Nominatim, 1 request/s). Expect 10–15 minutes. Later runs take a couple of minutes.
+
+## Sign-up gate (a demand test, not a paywall)
+
+Flow: click a dot → panel (company, people, % of staff, date, confidence, sources) → **Dive deeper** → table with the first 3–4 rows clear and the rest blurred, plus an "Early warning" tab (WARN notices filed but not yet effective) → email-only form → the full table unlocks in that browser (`localStorage`). The data itself stays public in `/data.json`; this only measures demand.
+
+Endpoints (same routes locally and on Cloudflare):
+
+| Route | What it does |
+|---|---|
+| `POST /api/signup` `{email, website, src}` | Stores the email once. `website` is a hidden honeypot (filled = fake success, nothing stored). 5 tries per IP per 10 min. |
+| `POST /api/event` `{t}` | Counts `panel`, `gate_view` or `signup_open` per day (120 per IP per 10 min). |
+| `GET /api/stats?key=…` | `{signups, totals, by_day}`. Needs `STATS_KEY` on Cloudflare; open locally. |
+
+Locally, `python3 -m radar serve` handles these routes itself and writes `data/signups.jsonl` and `data/counts.json` (both gitignored). Check demand with `curl http://127.0.0.1:8000/api/stats`.
+
+On Cloudflare, `functions/` deploys together with `dist/` (the workflow runs `wrangler pages deploy dist` from the repo root, which picks up `functions/`). One-time setup in the Cloudflare dashboard:
+1. **Storage (pick one).** D1 (recommended): *Storage & Databases → D1 → Create*, e.g. `layoff-signups`. Or KV: *Workers KV → Create namespace*.
+2. **Bind it to the Pages project:** *Workers & Pages → (project) → Settings → Bindings → Add*: a D1 database with variable name **`DB`**, or a KV namespace with variable name **`SIGNUPS`**. If both are bound, D1 is used. Tables create themselves on the first request.
+3. **Variables** (*Settings → Variables and Secrets*, as secrets): **`STATS_KEY`** (any long random string; needed to read `/api/stats`) and, optionally, **`HASH_SALT`** (salts the hashed IPs used for rate limiting; raw IPs are never stored).
+4. Redeploy (run the workflow once) so the bindings apply. Then: `curl "https://yourdomain.com/api/stats?key=$STATS_KEY"`.
+   Export emails: `npx wrangler d1 execute layoff-signups --remote --command "SELECT email, created_at, src FROM signups"`.
+
+Without a binding, `/api/signup` answers 503 and the form shows the error, so set storage up before launch.

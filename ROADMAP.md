@@ -14,6 +14,12 @@
 - Entity resolution: products, units and executives merge into the employer; rumours fold into the confirmed event
 - Hourly GitHub Actions refresh and deploy to Cloudflare Pages (DB kept in the Actions cache)
 
+## V3: free-to-locked demand test (this release)
+- Map freedom: zoom (wheel, pinch, +/−) and pan on the flat map and the globe; dots stay legible, company labels appear at higher zoom
+- Click a dot: a panel on the first screen (bottom sheet on phones) with people, % of staff, date, confidence and sources, plus "Dive deeper"
+- Dive deeper: table preview by company, sector and country, first rows free, the rest blurred behind an email-only sign-up; an "Early warning" tab of WARN notices not yet effective (the paid-product teaser)
+- Sign-up through a Cloudflare Pages Function (D1 or KV), honeypot and rate limit; own counts of panel opens, gate views and sign-ups, no third-party analytics
+
 ## Deliberately out (for now)
 | Item | Why not yet |
 |---|---|
@@ -23,7 +29,8 @@
 | More WARN states (NY, WA, TX, NJ, IL…) | Each needs its own scraper; some block bots |
 | LLM extraction | Hook exists (`LR_LLM_CMD`), off to keep runs free and deterministic |
 | Alerts, newsletter, public API | After the audience exists |
-| Map zoom and city clustering | Fine at today's density |
+| City clustering | Zoom plus label collision handling covers today's density |
+| Real paywall, accounts, alert e-mails | Only after the demand test shows sign-ups ÷ gate views is worth it |
 
 ## Plan
 1. **Launch (now):** pick the name and domain, connect Cloudflare Pages, turn on the hourly workflow, seed the first posts with the weekly card.

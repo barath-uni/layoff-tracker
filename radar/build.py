@@ -14,7 +14,7 @@ from . import og
 from .db import connect
 from .places import HQ, WORKFORCE, geocode
 from .ref import TIER_LABEL, US_STATE_CODES
-from .util import DIST, SITE, TODAY, YEAR_START, slugify
+from .util import DATA, DIST, SITE, TODAY, YEAR_START, slugify
 
 from .config import BRAND as NAME, SITE_URL
 e = html.escape
@@ -120,6 +120,27 @@ def staff_share(ev):
         shown = "<0.1%" if p < 0.1 else (f"≈{p:.1f}%" if p < 10 else f"≈{p:.0f}%")
         return shown, f"of ≈{wf[0]:,} staff (FY{wf[1]} annual report)"
     return None, None
+
+
+def early_warnings(evs):
+    """WARN notices already filed whose layoff date is still ahead (the paid-product teaser)."""
+    slug_of = {}
+    for x in evs:
+        for r in x["sources"]:
+            if r["source"].startswith("warn"):
+                slug_of[r["title"]] = x["slug"]
+    out, seen = [], set()
+    for r in connect().execute("""SELECT title, published, meta FROM items WHERE source LIKE 'warn%'
+                                  AND json_extract(meta, '$.effective') > ? ORDER BY json_extract(meta, '$.effective')""",
+                               (TODAY.isoformat(),)):
+        m = json.loads(r["meta"] or "{}")
+        k = (m.get("company"), m.get("effective"), m.get("location"))
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append({"c": m.get("company"), "s": slug_of.get(r["title"]), "n": m.get("headcount"), "f": r["published"],
+                    "e": m.get("effective"), "loc": m.get("location"), "i": m.get("industry"), "kd": m.get("kind")})
+    return out
 
 
 def week_index(d):
@@ -285,7 +306,7 @@ def page(path, title, desc, body, og_img="/og/home.png", page_class="", wrap=Tru
     url = SITE_URL + path
     img = SITE_URL + og_img
     extra_js = ("<script src=\"/static/vendor/d3-array.min.js\" defer></script><script src=\"/static/vendor/d3-geo.min.js\" defer></script>"
-                "<script src=\"/static/vendor/topojson-client.min.js\" defer></script><script src=\"/static/globe.js\" defer></script>"
+                "<script src=\"/static/vendor/topojson-client.min.js\" defer></script><script src=\"/static/globe.js\" defer></script><script src=\"/static/gate.js\" defer></script>"
                 if page_class == "home" else "")
     return f"""<!doctype html>
 <html lang="en"><head>
@@ -389,8 +410,9 @@ def home(evs, s, updated, industries, countries):
     <div class="globe-box" data-globe-box>
       <canvas data-globe role="img" aria-label="Map of {on_map} layoff events in {y}"></canvas>
       <div class="seg view" role="group" aria-label="Map view"><button type="button" data-view="globe" aria-pressed="true">Globe</button><button type="button" data-view="map" aria-pressed="false">Map</button></div>
+      <div class="zoom" role="group" aria-label="Zoom"><button type="button" data-zoom="in" aria-label="Zoom in">+</button><button type="button" data-zoom="out" aria-label="Zoom out">−</button><button type="button" data-zoom="reset" aria-label="Reset view" hidden>⟲</button></div>
       <div class="legend"><span><i class="lg fresh"></i>last 7 days</span><span><i class="lg"></i>earlier in {y}</span><span>size = people</span></div>
-      <div class="pin" data-pin hidden></div>
+      <div class="pin" data-pin hidden role="dialog" aria-label="Layoff details"></div>
     </div>
   </div>
   <div class="rightnow"><span class="rn-label"><span class="live" aria-hidden="true"></span>Right now</span><ol data-rightnow>{rightnow_items(evs)}</ol></div>
@@ -431,7 +453,9 @@ def home(evs, s, updated, industries, countries):
   <div class="feed" data-feed>{feed}<button class="more" type="button" data-more>Show more</button></div>
 </section>
 </div>
-<script type="application/json" id="events">{json.dumps(slim, separators=(",", ":")).replace("</", "<\\/")}</script>"""
+<script type="application/json" id="events">{json.dumps(slim, separators=(",", ":")).replace("</", "<\\/")}</script>
+<script type="application/json" id="warn">{json.dumps(early_warnings(evs), separators=(",", ":")).replace("</", "<\\/")}</script>
+<div class="dive" data-dive hidden><div class="dive-in" role="dialog" aria-modal="true" aria-labelledby="dive-title" tabindex="-1"></div></div>"""
     title = f"{fmt(s['ytd'])} people laid off in {y}: {NAME}"
     desc = f"{fmt(s['ytd'])} people laid off in {y} so far, live. Every number links to its sources."
     return page("/", title, desc, body, "/og/home.png", "home", wrap=False)
@@ -665,7 +689,79 @@ def build():
     print(f"built {len(by_slug)} company pages, {len(stat_defs)} stat pages; ytd={s['ytd']:,} d30={s['d30']:,} events={s['events']}")
 
 
+# ------------------------------------------------------------------ local sign-up API (mirrors functions/api/*.js)
+EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$")
+COUNTABLE = {"panel", "gate_view", "signup_open"}
+_hits = defaultdict(list)
+
+
+def _rate_ok(ip, limit, window=600):
+    now = datetime.now().timestamp()
+    _hits[ip] = [t for t in _hits[ip] if now - t < window]
+    if len(_hits[ip]) >= limit:
+        return False
+    _hits[ip].append(now)
+    return True
+
+
+def _bump(name):
+    p = DATA / "counts.json"
+    counts = json.loads(p.read_text()) if p.exists() else {}
+    day = date.today().isoformat()
+    counts.setdefault(name, {})
+    counts[name][day] = counts[name].get(day, 0) + 1
+    p.write_text(json.dumps(counts, indent=1))
+    return counts
+
+
 class Handler(http.server.SimpleHTTPRequestHandler):
+    def _json(self, code, obj):
+        body = json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):
+        ip = self.client_address[0]
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            d = json.loads(self.rfile.read(min(n, 4096)) or b"{}") if n else {}
+        except (ValueError, json.JSONDecodeError):
+            return self._json(400, {"ok": False, "error": "bad json"})
+        if self.path == "/api/event":
+            if d.get("t") not in COUNTABLE or not _rate_ok("ev:" + ip, 120):
+                return self._json(204 if d.get("t") in COUNTABLE else 400, {"ok": False})
+            _bump(d["t"])
+            return self._json(200, {"ok": True})
+        if self.path != "/api/signup":
+            return self._json(404, {"ok": False})
+        if d.get("website"):  # honeypot: pretend success, store nothing
+            return self._json(200, {"ok": True})
+        email = str(d.get("email") or "").strip().lower()
+        if not EMAIL_RE.match(email) or len(email) > 254:
+            return self._json(400, {"ok": False, "error": "Enter a valid email."})
+        if not _rate_ok("su:" + ip, 5):
+            return self._json(429, {"ok": False, "error": "Too many tries. Wait a few minutes."})
+        p = DATA / "signups.jsonl"
+        known = p.exists() and any(json.loads(l).get("email") == email for l in p.read_text().splitlines() if l.strip())
+        if not known:
+            with p.open("a") as f:
+                f.write(json.dumps({"email": email, "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                                    "src": str(d.get("src") or "")[:80], "ua": (self.headers.get("User-Agent") or "")[:160]}) + "\n")
+            _bump("signup")
+        return self._json(200, {"ok": True, "known": bool(known)})
+
+    def do_GET(self):
+        if self.path.split("?")[0] == "/api/stats":
+            p, sp = DATA / "counts.json", DATA / "signups.jsonl"
+            counts = json.loads(p.read_text()) if p.exists() else {}
+            n = sum(1 for l in sp.read_text().splitlines() if l.strip()) if sp.exists() else 0
+            return self._json(200, {"signups": n, "totals": {k: sum(v.values()) for k, v in counts.items()}, "by_day": counts})
+        return super().do_GET()
+
     def send_error(self, code, message=None, explain=None):
         if code == 404 and (DIST / "404.html").exists():
             body = (DIST / "404.html").read_bytes()

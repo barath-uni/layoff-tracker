@@ -47,3 +47,14 @@ Self-reports are dropped: laid-off people won't log in, and their company accoun
 - A correction applies when the cited link is itself a qualifying source (filing, WARN notice, major outlet) and the pipeline re-parses it the same way. That keeps the "every number links to its sources" rule.
 - Duplicate/merge flags feed an alias table (`ref.ALIASES`) reviewed by a maintainer; the same goes for company-name fixes.
 - Every applied correction is shown in the event's source list with a date, so changes stay auditable.
+
+## How data products gate depth (2026-10-27, brief)
+| Product | Free | Gate | Takeaway |
+|---|---|---|---|
+| datafa.st (DataFast) | Public live demo dashboard (`/demo`) with real data, docs, pricing | Your own data needs an account; 14-day trial, no card; depth (sites, seats, retention) scales by plan ($9 / $19 per month) | Let people play with the real thing first; ask for the sign-up only when they want *their* depth |
+| WARNTracker | Headline stats, maps, charts, browse by company/state, a "partial sample" of listings | Full dataset, history and a subscription for *future* WARN notices are paid (third-party listing: about $250/month, $2,000+ for historical bundles) | Advance notices are what people pay for. Our "early warning" teaser points at the same value |
+| Exploding Topics | Large part of the trend database, no account | Pro (from $39/month) for full lists and forecasts | Free breadth, paid depth |
+| Glimpse, SimilarWeb, Crunchbase-style tools | Top rows / basic facts | Remaining rows blurred or cut off with "sign up to see more" | Blurred rows show the data exists and how much of it there is |
+
+What we do: the map, counter, panel and first 3-4 table rows are free. The rest of the table and the early-warning list sit behind an email-only form (no password). The unlock is client-side, because this measures demand and is not a real paywall: the data stays public in `/data.json`. Counts (`panel`, `gate_view`, `signup_open`, `signup`) go to our own D1/KV, with no third-party analytics. The signal to watch is sign-ups ÷ gate views.
+Sources: datafa.st (pricing and FAQ), warntracker.com, pricingsaas.com/companies/warntracker, explodingtopics.com blog.
