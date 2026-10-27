@@ -50,23 +50,22 @@
       c.img.referrerPolicy = "no-referrer";
       c.img.onload = function () {
         if (c.img.naturalWidth <= 2) return c.img.onerror();
-        c.ok = true; c.cbs.forEach(function (f) { f(); }); c.cbs = [];
+        c.ok = true; c.cbs.forEach(function (f) { f(c); }); c.cbs = [];
       };
       c.img.onerror = function () {
         c.i++;
         if (c.i < LOGO_SRC.length) { c.img.src = LOGO_SRC[c.i](dm); return; }
-        c.fail = true; c.cbs.forEach(function (f) { f(); }); c.cbs = [];
+        c.fail = true; c.cbs.forEach(function (f) { f(c); }); c.cbs = [];
       };
       c.img.src = LOGO_SRC[0](dm);
     }
-    if (c.ok || c.fail) cb(); else c.cbs.push(cb);
-    return c;
+    if (c.ok || c.fail) cb(c); else c.cbs.push(cb);
   }
   function logoEl(e, big) {
     var s = el("span", "lg" + (big ? " lg-lg" : ""));
     var mono = function () { s.classList.add("mono"); s.textContent = initials(e.c); };
     if (!e.dm) { mono(); return s; }
-    var c = loadLogo(e.dm, function () {
+    loadLogo(e.dm, function (c) {
       if (c.fail) { s.textContent = ""; mono(); return; }
       if (!s.firstChild) { var im = el("img"); im.alt = ""; im.referrerPolicy = "no-referrer"; im.src = c.img.src; s.appendChild(im); }
     });
@@ -87,7 +86,7 @@
     };
     mono();
     if (e.dm) {
-      var c = loadLogo(e.dm, function () {
+      loadLogo(e.dm, function (c) {
         if (c.fail) return;
         g.clearRect(0, 0, SP, SP);
         g.beginPath(); g.arc(SP / 2, SP / 2, SP / 2, 0, TAU); g.fillStyle = "#f4f5f7"; g.fill();
