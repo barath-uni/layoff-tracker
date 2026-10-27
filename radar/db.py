@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS events(
   kind TEXT, headline TEXT, visible INTEGER
 );
 CREATE TABLE IF NOT EXISTS event_claims(event_id INTEGER, claim_id INTEGER);
+CREATE TABLE IF NOT EXISTS geo(place TEXT PRIMARY KEY, lat REAL, lon REAL);
 CREATE TABLE IF NOT EXISTS runs(id INTEGER PRIMARY KEY, at TEXT, stats TEXT);
 """
 

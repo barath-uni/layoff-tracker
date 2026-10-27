@@ -45,7 +45,24 @@ def _gn_parse(body, edition):
     return out
 
 
-def google_news(backfill=True):
+def _want_backfill():
+    """LR_BACKFILL=1 always, 0 never, auto (default): first run, or once a day at 03:xx UTC."""
+    import os
+    from datetime import datetime, timezone
+    from .util import DATA
+    flag = os.environ.get("LR_BACKFILL", "auto")
+    if flag in ("0", "1"):
+        return flag == "1"
+    import sqlite3
+    try:
+        n = sqlite3.connect(DATA / "radar.db").execute("SELECT COUNT(*) FROM items WHERE source = 'gnews'").fetchone()[0]
+    except sqlite3.Error:
+        n = 0
+    return n == 0 or datetime.now(timezone.utc).hour == 3
+
+
+def google_news(backfill=None):
+    backfill = _want_backfill() if backfill is None else backfill
     items, urls = [], []
     # Recent window across several English editions.
     for gl, hl, ceid in GN_RECENT_EDITIONS:

@@ -1,8 +1,9 @@
 # layoff-radar: STATUS
-What: public, shareable layoff tracker built on mined data only. Multi-source scrape, then a consensus headcount per event, with every number sourced. Self-reports are dropped. Corrections are deferred (see research/notes.md).
-Scope: all industries (tech-heavy), global. Name "layoff-radar" is a placeholder.
-State (2026-10-27): V1 works locally. 7.9k items from Google News, EDGAR 8-K 2.05, CA+MD WARN, HN and Reddit became 637 shown events at 565 companies (403 Official, 163 Corroborated, 71 Reported). YTD total 365,012; last 30 days 31,625.
-Run: `python3 -m radar all`, then `python3 -m radar serve 8000` (see README).
-Accuracy rules: shown only if official or >= 2 independent publishers; re-reports fold into one event; past-total and multi-year numbers are ignored; >50k needs 3+ publishers incl. a major outlet.
-Known gaps: rule-based parsing (LLM hook off), Google News links are redirect URLs, WARN covers only CA+MD, country is often HQ or Unknown, some multi-round programs (Oracle, VW) are fuzzy (shown as ranges).
-Next: user picks a name and domain (SITE_URL); schedule daily `radar all`; add more WARN states (NY, WA, TX via other routes); optional LLM extraction pass; deploy dist/ to Cloudflare Pages.
+What: public, shareable layoff tracker built on mined data only. Multi-source scrape, then a consensus headcount per event, with every number sourced. The brand is a single config value (`LR_BRAND`, placeholder "layoff-radar").
+State (2026-10-27): V2 built locally. The front page is a live stage: globe/map with event dots, a counter ticking at the 30-day pace, a deadpan line and a "right now" feed. Share kit: company statement cards, "this week in layoffs" card, 1080×1920 stories. "% of staff" is sourced or ≈ from a curated employee table.
+Data: 7.9k items from Google News, EDGAR 8-K 2.05, CA+MD WARN, HN and Reddit became ~630 shown events (Official / Corroborated / Reported only).
+Accuracy: entity resolution merges products, units and CEOs into the employer; rumours fold into confirmed events; rumour, hypothetical and past-total numbers are never counted.
+Deploy: `.github/workflows/refresh.yml` (hourly, Actions cache for data/, wrangler to Cloudflare Pages). Prepared, not pushed. See README for the one-time setup.
+Run: `python3 -m radar all`, then `python3 -m radar serve 8000`.
+Known gaps: rule-based parsing, Google News redirect links, WARN covers CA+MD only, multi-round programs (Oracle, VW) shown as ranges.
+Next: user picks a name and domain, creates the GitHub repo and Cloudflare Pages project, and adds secrets. See ROADMAP.md for the phases.

@@ -12,11 +12,11 @@ from urllib.parse import quote
 
 from . import og
 from .db import connect
-from .ref import TIER_LABEL
+from .places import HQ, WORKFORCE, geocode
+from .ref import TIER_LABEL, US_STATE_CODES
 from .util import DIST, SITE, TODAY, YEAR_START, slugify
 
-SITE_URL = os.environ.get("SITE_URL", "http://localhost:8000").rstrip("/")
-NAME = "layoff-radar"
+from .config import BRAND as NAME, SITE_URL
 e = html.escape
 LABEL_STEPS = {"Official": 4, "Corroborated": 3, "Reported": 2, "Unverified": 1}
 TIER_RANK = {"official": 0, "major": 1, "news": 2, "aggregator": 3, "social": 4, "filing-nonworkforce": 5}
@@ -66,9 +66,60 @@ def load():
                 s["hn"] = json.loads(s["meta"] or "{}").get("hn")
             rows.append(s)
         ev["sources"] = rows
+    for ev in evs:
+        ev["lat"] = ev["lon"] = None
+        for place in event_places(ev):
+            hit = geocode(con, place)
+            if hit:
+                ev["lat"], ev["lon"] = hit
+                ev["place"] = place
+                break
+        ev["pct_show"], ev["pct_note"] = staff_share(ev)
     run = con.execute("SELECT at FROM runs ORDER BY id DESC LIMIT 1").fetchone()
     updated = datetime.fromisoformat(run["at"]) if run else datetime.now(timezone.utc)
     return evs, updated
+
+
+def _us(loc):
+    """'Palo Alto, CA' -> ['Palo Alto, CA, USA', 'CA, USA']"""
+    if not loc or "," not in loc:
+        return []
+    city, st = [x.strip() for x in loc.rsplit(",", 1)]
+    if st not in US_STATE_CODES:
+        return []
+    return [f"{city}, {st}, USA", f"{st}, USA"]
+
+
+def event_places(ev):
+    """Most specific place first: WARN site, curated HQ, SEC filer address, then country."""
+    out = []
+    for s in ev["sources"]:
+        if s["source"].startswith("warn"):
+            out += _us(json.loads(s["meta"] or "{}").get("location"))
+            break
+    if ev["slug"] in HQ:
+        out.append(HQ[ev["slug"]])
+    for s in ev["sources"]:
+        if s["source"] == "edgar":
+            out += _us(json.loads(s["meta"] or "{}").get("location"))
+            break
+    if ev["country"] and ev["country"] not in ("Unknown",) and "multi" not in ev["country"]:
+        out.append(ev["country"])
+    return out
+
+
+def staff_share(ev):
+    """(display, note). Sourced percentage first; else computed from the curated workforce table."""
+    wf = WORKFORCE.get(ev["slug"])
+    if ev["pct"]:
+        comp = 100 * ev["headcount"] / wf[0] if (wf and ev["headcount"]) else None
+        if comp is None or comp / 3 <= ev["pct"] <= comp * 3:  # else the % describes a subset ("37% of corporate roles")
+            return f'{ev["pct"]:g}%', "of staff, as reported"
+    if ev["headcount"] and wf:
+        p = 100 * ev["headcount"] / wf[0]
+        shown = "<0.1%" if p < 0.1 else (f"≈{p:.1f}%" if p < 10 else f"≈{p:.0f}%")
+        return shown, f"of ≈{wf[0]:,} staff (FY{wf[1]} annual report)"
+    return None, None
 
 
 def week_index(d):
@@ -230,9 +281,12 @@ def weekly_chart(weekly, week_top):
 
 
 # ------------------------------------------------------------------ pages
-def page(path, title, desc, body, og_img="/og/home.png", page_class=""):
+def page(path, title, desc, body, og_img="/og/home.png", page_class="", wrap=True):
     url = SITE_URL + path
     img = SITE_URL + og_img
+    extra_js = ("<script src=\"/static/vendor/d3-array.min.js\" defer></script><script src=\"/static/vendor/d3-geo.min.js\" defer></script>"
+                "<script src=\"/static/vendor/topojson-client.min.js\" defer></script><script src=\"/static/globe.js\" defer></script>"
+                if page_class == "home" else "")
     return f"""<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -252,29 +306,58 @@ def page(path, title, desc, body, og_img="/og/home.png", page_class=""):
 <link rel="stylesheet" href="/static/style.css">
 <script>try{{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}}catch(_){{}}</script>
 </head><body class="{page_class}">
-<header class="wrap top">
+<div class="bar"><header class="wrap top">
   <a class="brand" href="/">{LOGO}<span>{NAME}</span></a>
   <nav class="nav"><a href="/companies/">Companies</a><a class="hide-sm" href="/methodology/">Methodology</a>
   <button class="icon-btn" type="button" data-theme-toggle aria-label="Toggle dark mode">{ICON["theme"]}</button></nav>
-</header>
-<main class="wrap">{body}</main>
+</header></div>
+<main{' class="wrap"' if wrap else ''}>{body}</main>
 <footer><div class="wrap"><span>{NAME} tracks layoffs from public filings, WARN notices and news. Every number links to its sources.</span>
 <span><a href="/methodology/">Methodology</a> · <a href="/data.json">Data (JSON)</a></span></div></footer>
 <div class="toast" role="status" aria-live="polite"></div>
-<script src="/static/app.js" defer></script>
+{extra_js}<script src="/static/app.js" defer></script>
 </body></html>"""
+
+
+def ago(d_iso):
+    days = (TODAY - date.fromisoformat(d_iso)).days
+    return "today" if days <= 0 else "yesterday" if days == 1 else f"{days} days ago" if days < 14 else short_date(d_iso)
+
+
+def rightnow_items(evs, n=4):
+    out = []
+    for x in [x for x in evs if x["headcount"] or x["pct_show"]][:n]:
+        num = f'{fmt(x["headcount"])} jobs' if x["headcount"] else f'{x["pct_show"]} of staff'
+        extra = f' · {x["pct_show"]} of staff' if x["headcount"] and x["pct_show"] else ""
+        out.append(f'<li><a href="/company/{e(x["slug"])}/"><b>{e(x["company"])}</b><span>{num}{e(extra)}</span>'
+                   f'<time datetime="{x["start"]}">{ago(x["start"])}</time></a></li>')
+    return "".join(out)
+
+
+def week_stats(evs):
+    since = (TODAY - timedelta(days=7)).isoformat()
+    wk = [x for x in evs if x["start"] >= since]
+    people = sum(x["headcount"] or 0 for x in wk)
+    by = defaultdict(int)
+    for x in wk:
+        by[x["company"]] += x["headcount"] or 0
+    top = sorted(((k, v) for k, v in by.items() if v), key=lambda r: -r[1])
+    return people, len({x["slug"] for x in wk}), top
 
 
 def home(evs, s, updated, industries, countries):
     url = SITE_URL + "/"
+    y = YEAR_START.year
+    pace_h = s["d30"] / (30 * 24)
+    every = round(3600 / pace_h) if pace_h else 0
+    wk_people, wk_cos, wk_top = week_stats(evs)
+    share_text = f"{fmt(s['ytd'])} people laid off in {y}. So far. Every number sourced:"
     delta = s["d30"] - s["prev30"]
     dtxt = (f'{"+" if delta >= 0 else "−"}{compact(abs(delta))} vs prior 30 days') if s["prev30"] else ""
-    share_text = (f"{fmt(s['ytd'])} people laid off in {YEAR_START.year} so far, across {fmt(s['companies'])} companies. "
-                  f"Every number links to its sources.")
     tiles = [
         ("Last 30 days", fmt(s["d30"]), dtxt or "people", "/stat/30d/"),
+        ("This week", fmt(wk_people), f"people at {wk_cos} companies", "/stat/week/"),
         ("Layoff events", fmt(s["events"]), f'{s["events30"]} in the last 30 days', "/stat/events/"),
-        ("Companies", fmt(s["companies"]), "with at least one event", "/companies/"),
         ("Official or corroborated", f'{s["official_share"]}%', "of tracked headcount", "/methodology/"),
     ]
     tiles_html = "".join(
@@ -286,32 +369,59 @@ def home(evs, s, updated, industries, countries):
     opts_i = "".join(f'<option>{e(n)}</option>' for n, _, _ in industries)
     opts_c = "".join(f'<option>{e(n)}</option>' for n, _, _ in countries)
     slim = [{"s": x["slug"], "c": x["company"], "d": x["start"], "n": x["headcount"], "lo": x["low"], "hi": x["high"],
-             "p": x["pct"], "l": x["label"], "cf": x["confidence"], "i": x["industry"], "k": x["country"], "h": x["headline"],
-             "np": x["n_publishers"]} for x in evs]
+             "p": x["pct"], "ps": x["pct_show"], "pn": x["pct_note"], "l": x["label"], "cf": x["confidence"],
+             "i": x["industry"], "k": x["country"], "h": x["headline"], "np": x["n_publishers"],
+             "la": x["lat"], "lo2": x["lon"],
+             "src": [[r["publisher"], r["url"]] for r in x["sources"][:3]]} for x in evs]
+    on_map = sum(1 for x in evs if x["lat"] is not None)
+    iso = updated.isoformat()
     body = f"""
-<section class="hero">
-  <div class="eyebrow"><span class="live" aria-hidden="true"></span>Tracked layoffs in {YEAR_START.year} · updated {updated.strftime("%b %-d, %H:%M")} UTC</div>
-  <h1 class="big" data-count="{s['ytd']}">{fmt(s['ytd'])}</h1>
-  <p class="lede">people laid off this year across <strong>{fmt(s['companies'])} companies</strong>, merged from SEC filings,
-  WARN notices and {fmt(sum(x['n_publishers'] for x in evs))} news reports. Every number links to its sources.</p>
-  <div class="hero-actions">{share_buttons(url, share_text, "/og/home.png")}</div>
-  <div class="tiles">{tiles_html}</div>
+<section class="stage" data-stage>
+  <div class="stage-in">
+    <div class="stage-copy">
+      <div class="eyebrow"><span class="live" aria-hidden="true"></span><span>Live</span><span aria-hidden="true">·</span><span data-ago data-updated="{iso}">updated {updated.strftime("%H:%M")} UTC</span></div>
+      <h1 class="ticker"><span data-ticker data-base="{s['ytd']}" data-updated="{iso}" data-pace="{pace_h / 3600:.6f}">{fmt(s['ytd'])}</span></h1>
+      <p class="kicker">people laid off in {y}. <span>So far.</span></p>
+      <p class="deadpan" data-deadpan data-every="{every}" data-week="{wk_people}" data-cos="{wk_cos}">At this pace, someone loses their job every {every} seconds.</p>
+      <div class="stage-share">{share_buttons(url, share_text, "/og/home.png")}<a class="btn ghost" href="/og/story-home.png" download>Story</a></div>
+      <p class="fine">The counter is a live estimate at the last 30 days' pace (about {pace_h:.0f} people an hour). It resets to verified figures every hour. <a href="/methodology/">How we count</a></p>
+    </div>
+    <div class="globe-box" data-globe-box>
+      <canvas data-globe role="img" aria-label="Map of {on_map} layoff events in {y}"></canvas>
+      <div class="seg view" role="group" aria-label="Map view"><button type="button" data-view="globe" aria-pressed="true">Globe</button><button type="button" data-view="map" aria-pressed="false">Map</button></div>
+      <div class="legend"><span><i class="lg fresh"></i>last 7 days</span><span><i class="lg"></i>earlier in {y}</span><span>size = people</span></div>
+      <div class="pin" data-pin hidden></div>
+    </div>
+  </div>
+  <div class="rightnow"><span class="rn-label"><span class="live" aria-hidden="true"></span>Right now</span><ol data-rightnow>{rightnow_items(evs)}</ol></div>
+</section>
+<div class="wrap">
+<section class="section">
+  <div class="tiles" style="margin-top:0">{tiles_html}</div>
+</section>
+<section class="section week-share">
+  <div class="card week-card">
+    <div><h3>This week in layoffs</h3><p class="cap">{fmt(wk_people)} people at {wk_cos} companies since {short_date((TODAY - timedelta(days=7)).isoformat())}. Ready to post.</p>
+    {share_buttons(SITE_URL + "/stat/week/", f"This week in layoffs: {fmt(wk_people)} people at {wk_cos} companies.", "/og/stat-week.png")}
+    <a class="btn ghost" href="/og/story-week.png" download style="margin-top:8px">Story (1080×1920)</a></div>
+    <img src="/og/stat-week.png" alt="This week in layoffs share card" width="1200" height="630" loading="lazy">
+  </div>
 </section>
 <section class="section">
-  <div class="card"><h3>People laid off per week</h3><p class="cap">By announcement date, {YEAR_START.year}. The last five weeks are highlighted.</p>
+  <div class="card"><h3>People laid off per week</h3><p class="cap">By announcement date, {y}. The last five weeks are highlighted.</p>
   {weekly_chart(s['weekly'], s['week_top'])}</div>
 </section>
 <section class="section">
-  <div class="section-head"><h2>Biggest layoffs of {YEAR_START.year}</h2><p><a href="/companies/">All companies →</a></p></div>
+  <div class="section-head"><h2>Biggest layoffs of {y}</h2><p><a href="/companies/">All companies →</a></p></div>
   <div class="card"><div class="bars">{bars_html(top, "company", link=lambda slug: f"/company/{slug}/")}</div></div>
 </section>
 <section class="section" id="explore">
   <div class="section-head"><h2>Explore</h2><p data-fsum></p></div>
   <div class="filters" role="group" aria-label="Filters">
-    <div class="seg" data-range><button type="button" data-r="30" aria-pressed="false">30 days</button><button type="button" data-r="90" aria-pressed="false">90 days</button><button type="button" data-r="ytd" aria-pressed="true">{YEAR_START.year}</button></div>
-    <select class="select" data-f="i" aria-label="Industry"><option value="">All industries</option>{opts_i}</select>
-    <select class="select" data-f="k" aria-label="Country"><option value="">All countries</option>{opts_c}</select>
-    <input class="search" type="search" placeholder="Search companies" data-f="q" aria-label="Search companies">
+    <div class="seg" data-range><button type="button" data-r="30" aria-pressed="false">30 days</button><button type="button" data-r="90" aria-pressed="false">90 days</button><button type="button" data-r="ytd" aria-pressed="true">{y}</button></div>
+    <select class="select" id="f-industry" data-f="i" aria-label="Industry"><option value="">All industries</option>{opts_i}</select>
+    <select class="select" id="f-country" data-f="k" aria-label="Country"><option value="">All countries</option>{opts_c}</select>
+    <input class="search" id="f-search" type="search" placeholder="Search companies" data-f="q" aria-label="Search companies">
   </div>
   <div class="grid2">
     <div class="card"><h3>By industry</h3><p class="cap">People laid off. Tap a bar to filter.</p><div class="bars" data-bars="i">{bars_html(industries, "i")}</div></div>
@@ -320,10 +430,11 @@ def home(evs, s, updated, industries, countries):
   <div class="section-head" style="margin-top:28px"><h2>Latest events</h2><p>Newest first</p></div>
   <div class="feed" data-feed>{feed}<button class="more" type="button" data-more>Show more</button></div>
 </section>
+</div>
 <script type="application/json" id="events">{json.dumps(slim, separators=(",", ":")).replace("</", "<\\/")}</script>"""
-    title = f"{fmt(s['ytd'])} people laid off in {YEAR_START.year}: {NAME}"
-    desc = f"Live tracker of {YEAR_START.year} layoffs across {s['companies']} companies. Consensus numbers from filings, WARN notices and news, each linked to its sources."
-    return page("/", title, desc, body, "/og/home.png", "home")
+    title = f"{fmt(s['ytd'])} people laid off in {y}: {NAME}"
+    desc = f"{fmt(s['ytd'])} people laid off in {y} so far, live. Every number links to its sources."
+    return page("/", title, desc, body, "/og/home.png", "home", wrap=False)
 
 
 def source_row(src):
@@ -336,14 +447,31 @@ def source_row(src):
             f'{short_date(src["date"])}{spec}{hn}</span></span><span class="c">{claim}</span></li>')
 
 
+def statement(cevs):
+    """Deadpan, postable line for a company's latest event: (lead, big, tail)."""
+    c, lev = cevs[0]["company"], cevs[0]
+    recent = (TODAY - date.fromisoformat(lev["start"])).days <= 14
+    verb = "just cut" if recent else "cut"
+    when = "" if recent else f" in {date.fromisoformat(lev['start']).strftime('%B')}"
+    if lev["pct_show"] and lev["headcount"]:
+        return f"{c} {verb}", lev["pct_show"], f"of its staff{when}. That is {fmt(lev['headcount'])} people."
+    if lev["pct_show"]:
+        return f"{c} {verb}", lev["pct_show"], f"of its staff{when}."
+    if lev["headcount"]:
+        return f"{c} {verb}", fmt(lev["headcount"]), f"job{'s' if lev['headcount'] != 1 else ''}{when}."
+    return f"{c} is cutting jobs{when}.", "Undisclosed", "No number has been published yet."
+
+
 def company_page(slug, cevs, s):
     c = cevs[0]
     total = sum(x["headcount"] or 0 for x in cevs)
     url = f"{SITE_URL}/company/{slug}/"
     best = max(cevs, key=lambda x: LABEL_STEPS.get(x["label"], 0))
     number = fmt(total) if total else (f'{cevs[0]["pct"]:g}%' if cevs[0]["pct"] else "Undisclosed")
-    share_text = (f"{c['company']} has laid off {fmt(total)} people in {YEAR_START.year}, per {NAME}'s source consensus."
-                  if total else f"{c['company']} layoffs in {YEAR_START.year}: every report and filing in one place.")
+    lead, big, tail = statement(cevs)
+    share_text = f"{lead} {big} {tail}".replace("Undisclosed No number has been published yet.", "").strip() + " Sources:"
+    pct_block = (f'<div><div class="k">Share of staff (latest)</div><div class="v">{e(c["pct_show"])}</div>'
+                 f'<div class="k" style="margin-top:2px">{e(c["pct_note"])}</div></div>') if c["pct_show"] else ""
     timeline = []
     for ev in cevs:
         srcs = "".join(source_row(x) for x in ev["sources"][:40])
@@ -361,9 +489,10 @@ def company_page(slug, cevs, s):
   <div class="facts"><span>{e(c['industry'])}</span><span>{e(c['country'])}</span><span>{len(cevs)} event{"s" if len(cevs) != 1 else ""} in {YEAR_START.year}</span>{conf_badge(best)}</div>
   <div class="co-total">
     <div><div class="k">Laid off in {YEAR_START.year}</div><div class="v">{number}</div></div>
+    {pct_block}
     <div><div class="k">Latest</div><div class="v" style="font-size:clamp(24px,4vw,34px);padding-top:8px">{nice_date(cevs[0]['start'])}</div></div>
   </div>
-  <div class="hero-actions">{share_buttons(url, share_text, f"/og/company/{slug}.png")}</div>
+  <div class="hero-actions">{share_buttons(url, share_text, f"/og/company/{slug}.png")}<a class="btn ghost" href="/og/story/{slug}.png" download>Story</a></div>
 </section>
 <section class="section"><div class="section-head"><h2>Timeline and sources</h2><p>Each event shows the consensus number and every source behind it.</p></div>
 <div class="timeline">{"".join(timeline)}</div></section>"""
@@ -407,6 +536,9 @@ Every figure on the site links to the sources it came from.</p>
 <p>Official sources are SEC 8-K filings under Item 2.05 (exit or disposal activities) and state WARN notices
 (California EDD, Maryland DOL). News comes from Google News searches across several English editions, plus Hacker News and r/layoffs as weak signals.
 X and LinkedIn are not used: their APIs are paid or prohibit this use.</p>
+<h2>Names and duplicates</h2>
+<p>Products, studios, units and executives often appear in headlines instead of the employer ("Ghost of Yōtei developer Sucker Punch", "Microsoft's Xbox").
+When most of a name's headlines also name a bigger, overlapping story right next to it, both are merged under the employer.</p>
 <h2>From reports to events</h2>
 <p>Each headline is parsed for a company, a headcount or percentage, and a date. Lists, opinion pieces, buyout offers and
 denials are discarded. Reports about the same company within two weeks of each other form one event. Later coverage that repeats
@@ -415,10 +547,17 @@ Numbers that describe several years, a past total or a long-term target ("by 203
 <h2>Consensus number</h2>
 <p>The event's number is the weighted median of the firm claims. Filings outrank news, and news outranks rumour. Figures far from the median
 are ignored. When sources disagree, the page shows the range (for example, "sources say 4,000–15,000"). WARN notices are only a floor:
-they cover one state, so they never lower a company-wide figure. Figures above 50,000 need at least three independent publishers, including a major outlet.</p>
+they cover one state, so they never lower a company-wide figure. Figures above 50,000 need at least three independent publishers, including a major outlet.
+Rumoured or hypothetical figures never set the number; once a layoff is confirmed, earlier rumour coverage joins that event.</p>
+<h2>Share of staff</h2>
+<p>When sources state a percentage, we show it. Otherwise, for large companies, we divide the headcount by the employee total from the
+company's last annual report before {YEAR_START.year} and mark it with ≈. Where the employee total is unknown, we show the count only.</p>
+<h2>The live counter</h2>
+<p>Between hourly data updates, the counter on the front page climbs at the average pace of the last 30 days. It is an estimate, labelled as one,
+and resets to the verified total on every update.</p>
 <h2>Confidence</h2>
 <p>Each source has a weight: official record 1.0, major outlet 0.7, other news 0.45, Hacker News 0.25, Reddit 0.15. Speculative wording
-("reportedly", "plans", "may") cuts a source's weight by 40%. Confidence = 1 − ∏(1 − weight) over independent publishers.</p>
+("reportedly", "may", "could", "sources say") cuts a source's weight by 40%. Confidence = 1 − ∏(1 − weight) over independent publishers.</p>
 <ul><li><strong>Official</strong>: a WARN notice or an SEC filing that mentions the workforce.</li>
 <li><strong>Corroborated</strong>: three or more independent publishers, or two including a major outlet.</li>
 <li><strong>Reported</strong>: two independent publishers.</li></ul>
@@ -428,7 +567,7 @@ In {YEAR_START.year}, {fmt(s['undisclosed'])} shown events have no stated headco
 <ul><li>Totals are a floor: many layoffs are never reported, and WARN coverage is limited to two states for now.</li>
 <li>Country is the company's headquarters unless a filing or the sources say where the cuts happen.</li>
 <li>Headline parsing is rule-based. An optional LLM extractor can be plugged in (<code>LR_LLM_CMD</code>) but is off.</li></ul>
-<p>Data: <a href="/data.json">data.json</a> holds every shown event with its sources.</p></div>"""
+<p>Data: <a href="/data.json">data.json</a> holds every shown event with its sources. Map places: <a href="https://www.geonames.org/">GeoNames</a> (CC BY 4.0) and OpenStreetMap Nominatim; land outlines: Natural Earth via world-atlas.</p></div>"""
     return page("/methodology/", f"Methodology: {NAME}", "How layoff-radar turns filings, WARN notices and news into sourced consensus numbers.", body)
 
 
@@ -457,19 +596,32 @@ def build():
         p.write_text(text)
 
     write("/", home(evs, s, updated, industries, countries))
+    (DIST / "og" / "story").mkdir(parents=True)
     og.card(DIST / "og/home.png", f"People laid off in {YEAR_START.year}, tracked", fmt(s["ytd"]),
             f"across {fmt(s['companies'])} companies · {fmt(s['events'])} events", stamp, spark=s["weekly"])
+    og.statement(DIST / "og/story-home.png", f"People laid off in {YEAR_START.year}", fmt(s["ytd"]),
+                 f"So far. {fmt(s['companies'])} companies.", f"Updated {stamp}", stamp, story=True, spark=s["weekly"])
+    wk_people, wk_cos, wk_top = week_stats(evs)
+    rows = [(n, fmt(v)) for n, v in wk_top]
+    wk_range = f"{short_date((TODAY - timedelta(days=7)).isoformat())} – {nice_date(TODAY.isoformat())}"
+    og.statement(DIST / "og/stat-week.png", "This week in layoffs", fmt(wk_people), f"people. {wk_cos} companies.",
+                 wk_range, stamp, rows=rows)
+    og.statement(DIST / "og/story-week.png", "This week in layoffs", fmt(wk_people), f"people. {wk_cos} companies.",
+                 wk_range, stamp, story=True, rows=rows)
 
     by_slug = defaultdict(list)
     for x in evs:
         by_slug[x["slug"]].append(x)
+    top_slugs = {c["slug"] for c in s["companies_list"][:60]}
+    d30 = (TODAY - timedelta(days=30)).isoformat()
     for slug, cevs in by_slug.items():
         write(f"/company/{slug}/", company_page(slug, cevs, s))
-        total = sum(x["headcount"] or 0 for x in cevs)
-        num = fmt(total) if total else (f'{cevs[0]["pct"]:g}%' if cevs[0]["pct"] else "Undisclosed")
-        og.card(DIST / f"og/company/{slug}.png", f"{cevs[0]['company']} layoffs in {YEAR_START.year}", num,
-                f"{len(cevs)} event{'s' if len(cevs) != 1 else ''} · {cevs[0]['label'].lower()} · "
-                f"{sum(x['n_publishers'] for x in cevs)} sources", stamp, quote=cevs[0]["headline"])
+        lead, big, tail = statement(cevs)
+        meta = (f"{nice_date(cevs[0]['start'])} · {cevs[0]['label']} · {cevs[0]['n_publishers']} "
+                f"source{'s' if cevs[0]['n_publishers'] != 1 else ''}")
+        og.statement(DIST / f"og/company/{slug}.png", lead, big, tail, meta, stamp)
+        if slug in top_slugs or cevs[0]["start"] >= d30:
+            og.statement(DIST / f"og/story/{slug}.png", lead, big, tail, meta, stamp, story=True)
     write("/companies/", companies_page(s))
 
     stat_defs = [
@@ -480,13 +632,16 @@ def build():
         ("events", f"Layoff events in {YEAR_START.year}", fmt(s["events"]), f"at {fmt(s['companies'])} companies, each confirmed by a filing or several outlets",
          f"{fmt(s['events'])} layoff events in {YEAR_START.year} so far."),
     ]
+    stat_defs.append(("week", "This week in layoffs", fmt(wk_people), f"people at {wk_cos} companies, {wk_range}",
+                      f"This week in layoffs: {fmt(wk_people)} people at {wk_cos} companies."))
     for name, v, _ in industries[:6]:
         n_co = len({x["slug"] for x in evs if x["industry"] == name})
         stat_defs.append((f"industry-{slugify(name)}", f"{name} layoffs in {YEAR_START.year}", fmt(v),
                           f"across {n_co} companies", f"{fmt(v)} people laid off in {name.lower()} in {YEAR_START.year}."))
     for key, eyebrow, number, sub, text in stat_defs:
         write(f"/stat/{key}/", stat_page(key, eyebrow, number, sub, text + f" Sourced tracker by {NAME}:"))
-        og.card(DIST / f"og/stat-{key}.png", eyebrow, number, sub, stamp, spark=s["weekly"])
+        if key != "week":
+            og.card(DIST / f"og/stat-{key}.png", eyebrow, number, sub, stamp, spark=s["weekly"])
 
     con = connect()
     counts = [(k, v) for k, v in con.execute(
@@ -503,6 +658,10 @@ def build():
                                        "date": r["date"], "headcount": r["headcount"], "pct": r["pct"]} for r in x["sources"]]}
                        for x in evs]}
     (DIST / "data.json").write_text(json.dumps(data, separators=(",", ":")))
+    live = {"updated": updated.isoformat(), "ytd": s["ytd"], "d30": s["d30"], "pace_per_hour": round(s["d30"] / 720, 2),
+            "week": wk_people, "latest": [{"s": x["slug"], "c": x["company"], "d": x["start"], "n": x["headcount"], "ps": x["pct_show"]}
+                                          for x in evs if x["headcount"] or x["pct_show"]][:12]}
+    (DIST / "live.json").write_text(json.dumps(live, separators=(",", ":")))
     print(f"built {len(by_slug)} company pages, {len(stat_defs)} stat pages; ytd={s['ytd']:,} d30={s['d30']:,} events={s['events']}")
 
 

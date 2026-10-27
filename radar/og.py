@@ -1,6 +1,7 @@
 """Share cards (1200x630 PNG) rendered with Pillow at build time."""
 from PIL import Image, ImageDraw, ImageFont
 
+from .config import BRAND
 from .util import ASSETS
 
 W, H = 1200, 630
@@ -44,7 +45,7 @@ def brand(draw, x, y):
     draw.arc((x, y, x + 34, y + 34), 200, 340, fill=INK2, width=3)
     draw.arc((x + 7, y + 7, x + 27, y + 27), 200, 340, fill=INK2, width=3)
     draw.ellipse((x + 13, y + 13, x + 21, y + 21), fill=ACCENT)
-    draw.text((x + 46, y + 2), "layoff-radar", font=font(600, 28), fill=INK)
+    draw.text((x + 46, y + 2), BRAND, font=font(600, 28), fill=INK)
 
 
 def columns(draw, box, values):
@@ -77,4 +78,56 @@ def card(path, eyebrow, number, subline, footer_right, spark=None, quote=None):
     elif spark:
         columns(d, (64, 490, W - 64, 560), spark)
     d.text((64, H - 44), "Every number links to its sources", font=font(400, 19), fill=MUTED)
+    im.save(path, "PNG", optimize=True)
+
+
+def _wrap(text, f, max_w):
+    words, lines, cur = text.split(), [], ""
+    for w in words:
+        t = (cur + " " + w).strip()
+        if f.getlength(t) <= max_w or not cur:
+            cur = t
+        else:
+            lines.append(cur)
+            cur = w
+    return lines + ([cur] if cur else [])
+
+
+def statement(path, lead, big, tail, meta, foot, story=False, rows=None, spark=None):
+    """Post-ready card: "<lead>" / BIG / "<tail>". 1200x630 or a 1080x1920 story."""
+    w, h = (1080, 1920) if story else (W, H)
+    pad = 88 if story else 64
+    im = Image.new("RGB", (w, h), BG)
+    d = ImageDraw.Draw(im)
+    brand(d, pad, 72 if story else 56)
+    fr = font(500, 26 if story else 22)
+    d.text((w - pad - fr.getlength(foot), (78 if story else 62)), foot, font=fr, fill=MUTED)
+    y = 420 if story else 140
+    fl = font(500, 64 if story else 40)
+    for line in _wrap(lead, fl, w - 2 * pad)[:3]:
+        d.text((pad, y), line, font=fl, fill=INK2)
+        y += int(fl.size * 1.2)
+    fb = fit(big, 600, 360 if story else 190, w - 2 * pad, tracking=-0.05)
+    y += 10 if story else 0
+    tracked(d, pad - 6, y, big, fb, ACCENT if not rows else INK, tracking=-0.05)
+    y += int(fb.size * 1.08)
+    ft = font(500, 64 if story else 40)
+    for line in _wrap(tail, ft, w - 2 * pad)[:2]:
+        d.text((pad, y), line, font=ft, fill=INK)
+        y += int(ft.size * 1.2)
+    y += 60 if story else 8
+    if rows:
+        fr2, fv = font(500, 44 if story else 26), font(600, 44 if story else 26)
+        for name, val in rows[: (8 if story else 3)]:
+            name = ellipsize(name, fr2, w - 2 * pad - 260)
+            d.text((pad, y), name, font=fr2, fill=INK2)
+            d.text((w - pad - fv.getlength(val), y), val, font=fv, fill=INK)
+            y += int(fr2.size * 1.55)
+            d.line((pad, y - 14, w - pad, y - 14), fill=GRID, width=1)
+    elif spark and story:
+        columns(d, (pad, y + 80, w - pad, y + 380), spark)
+    fm = font(400, 32 if story else 22)
+    d.text((pad, h - (150 if story else 44) - (0 if story else 0)), ellipsize(meta, fm, w - 2 * pad), font=fm, fill=MUTED)
+    if story:
+        d.text((pad, h - 96), "Every number links to its sources", font=font(400, 28), fill=MUTED)
     im.save(path, "PNG", optimize=True)
