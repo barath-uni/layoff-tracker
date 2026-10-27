@@ -58,3 +58,23 @@ Self-reports are dropped: laid-off people won't log in, and their company accoun
 
 What we do: the map, counter, panel and first 3-4 table rows are free. The rest of the table and the early-warning list sit behind an email-only form (no password). The unlock is client-side, because this measures demand and is not a real paywall: the data stays public in `/data.json`. Counts (`panel`, `gate_view`, `signup_open`, `signup`) go to our own D1/KV, with no third-party analytics. The signal to watch is sign-ups ÷ gate views.
 Sources: datafa.st (pricing and FAQ), warntracker.com, pricingsaas.com/companies/warntracker, explodingtopics.com blog.
+
+## Global expansion (2026-10-27)
+Coverage per country is in `research/sources-by-country.md`; run costs and the full-coverage extrapolation are in `research/scale.md`.
+
+### Where the optional LLM hook would help (it stays off by default)
+The multilingual rules (`radar/intl.py`) handle the common shapes: "<Company> streicht 1.200 Stellen", "Plan social chez <Company>",
+"<Company>、希望退職500人募集", "<Company>裁员10%". They miss, and an LLM pass over the misses (`LR_LLM_CMD`, only headlines with a
+local layoff keyword that the rules could not parse) would help most with:
+- **Scripts without capital letters** (Thai, Arabic, Hebrew, Hindi, Bengali): the company is only found when it is already known
+  (gazetteer of KNOWN names, official filers and names seen in English headlines) or written in Latin letters.
+- **German capitalised nouns**: every noun is capitalised, so "Autoindustrie", "Pharmastandort" or "Gesamtmetall" look like names.
+  A stoplist, suffix rules (-ung, -heit, -konzern, -hersteller ...) and the GeoNames city list remove most; an LLM would remove the rest.
+- **Chinese and Korean word boundaries**: the company is taken as the text before the layoff word ("特斯拉宣布裁员"), which fails on
+  long headlines that start with context ("继微软之后，又一巨头裁员").
+- **Names across scripts**: マイクロソフト, 微软 and Microsoft are one employer. A curated map covers ~120 big names; an LLM (or
+  Wikidata labels) would cover the long tail.
+- **Number words and fractions**: "zwei Drittel der Stellen", "dos mil empleos", "un tiers des effectifs" are not parsed.
+- **Eligibility pools vs. cuts** in Japan and Korea ("6万人対象に希望退職" is the pool, not the cut). Rules catch 対象/대상; edge cases remain.
+- **Union and ministry figures** ("Gewerkschaft: 3.000 Jobs in Gefahr") are marked speculative by wording; an LLM would separate
+  the company's own figure from a union estimate more reliably.

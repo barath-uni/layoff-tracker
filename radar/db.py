@@ -40,7 +40,14 @@ CREATE TABLE IF NOT EXISTS events(
 CREATE TABLE IF NOT EXISTS event_claims(event_id INTEGER, claim_id INTEGER);
 CREATE TABLE IF NOT EXISTS geo(place TEXT PRIMARY KEY, lat REAL, lon REAL);
 CREATE TABLE IF NOT EXISTS runs(id INTEGER PRIMARY KEY, at TEXT, stats TEXT);
+-- one row per source per fetch run: what it cost (research/scale.md is built from these)
+CREATE TABLE IF NOT EXISTS source_runs(id INTEGER PRIMARY KEY, at TEXT, source TEXT, mode TEXT, wall_s REAL, items INTEGER,
+  new_items INTEGER, requests INTEGER, cache_hits INTEGER, net_bytes INTEGER, errors INTEGER, rss_mb INTEGER,
+  min_avail_mb INTEGER, ok INTEGER, note TEXT);
 """
+# Columns added after V3 (claims/events are rebuilt every run, items keep their rows).
+MIGRATIONS = [("claims", "horizon", "TEXT"), ("claims", "lang", "TEXT"), ("claims", "src_country", "TEXT"),
+              ("claims", "pubkey", "TEXT"), ("events", "horizon", "TEXT")]
 
 
 def connect():
@@ -48,4 +55,8 @@ def connect():
     con = sqlite3.connect(DATA / "radar.db")
     con.row_factory = sqlite3.Row
     con.executescript(SCHEMA)
+    for table, col, typ in MIGRATIONS:
+        if col not in {r[1] for r in con.execute(f"PRAGMA table_info({table})")}:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
+    con.execute("CREATE INDEX IF NOT EXISTS items_source ON items(source)")
     return con

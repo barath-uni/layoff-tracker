@@ -235,8 +235,9 @@
     close.addEventListener("click", closePin);
     pin.appendChild(close);
     pin.appendChild(el("div", "pin-co", e.c));
-    pin.appendChild(el("div", "pin-n", e.n ? fmt(e.n) : e.ps ? e.ps : "Undisclosed"));
-    var sub = e.n && e.lo && e.hi && e.lo !== e.hi ? "people · sources say " + fmt(e.lo) + "–" + fmt(e.hi) : e.n ? "people" : e.ps ? "of staff" : "no number published yet";
+    pin.appendChild(el("div", "pin-n", e.n ? fmt(e.n) : e.pl ? fmt(e.pl) : e.ps ? e.ps : "Undisclosed"));
+    var sub = e.pl ? "announced plan" + (e.hz && e.hz !== "multi-year" ? ", by " + e.hz : ", several years") + " · not counted" :
+      e.n && e.lo && e.hi && e.lo !== e.hi ? "people · sources say " + fmt(e.lo) + "–" + fmt(e.hi) : e.n ? "people" : e.ps ? "of staff" : "no number published yet";
     pin.appendChild(el("div", "pin-sub", sub));
     if (e.n && e.ps) pin.appendChild(el("div", "pin-sub", e.ps + " " + (e.pn || "of staff")));
     var dt = new Date(e.d + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });

@@ -1,12 +1,13 @@
 # layoff-radar
 
-A public layoff tracker built on mined data only. The front page is a live stage (globe/map, ticking counter, "right now" feed) made to be screenshotted and shared. It pulls SEC filings, WARN notices and news, merges reports into events, and assigns each event a consensus headcount and a confidence score. Every number links to its sources. The site is fully static.
+A public layoff tracker built on mined data only. The front page is a live stage (globe/map, ticking counter, "right now" feed) made to be screenshotted and shared. It pulls SEC filings, six US states' WARN notices, Japan's TDnet and India's NSE disclosures, and news from 55 Google News country editions in 29 languages (plus GDELT when it is reachable), merges reports into events, and assigns each event a consensus headcount and a confidence score. Every number links to its sources. The site is fully static.
 
 ## Run
 
 ```sh
 python3 -m radar all            # fetch -> process -> build (about 5 min on first run; HTTP is cached in data/cache)
-python3 -m radar fetch [gnews edgar warn_ca warn_md hn reddit]   # pull sources (all if none given)
+python3 -m radar fetch [gnews gnews_intl gdelt edgar warn_ca warn_md warn_tx warn_pa warn_co warn_wa tdnet nse asx hn reddit]
+                                # pull sources (all if none given), one at a time, streamed into the DB in batches
 python3 -m radar process        # headlines -> claims -> events (consensus + confidence)
 python3 -m radar build          # dist/: HTML pages, data.json, share-card PNGs
 python3 -m radar serve 8000     # local preview at http://127.0.0.1:8000 (Ctrl+C to stop)
@@ -23,12 +24,16 @@ Requirements: Python 3.11+ and Pillow (for share cards). Everything else is stdl
 | `LR_LLM_CMD` | Optional extractor command (JSON in on stdin, JSON out). Off by default; see `radar/llm.py`. |
 | `LR_TODAY` | Pin "today" (YYYY-MM-DD) for reproducible builds. |
 | `LR_BRAND` | Product name shown everywhere (default `layoff-radar`, a placeholder). |
-| `LR_BACKFILL` | `1` re-scan the whole year of news, `0` recent only, `auto` (default): first run and 03:00 UTC daily. |
+| `LR_BACKFILL` | `1` re-scan the whole window of news, `0` recent only, `auto` (default): first run of each source and 03:00 UTC daily. |
+| `LR_SINCE` | Start of the fetch window (default Jan 1 of the current year). `LR_SINCE=2025-01-01` backfills two years; the site still reports the current year. |
 
 ## Layout
 
-- `radar/sources.py`: fetchers for Google News RSS, SEC EDGAR 8-K Item 2.05, CA and MD WARN, HN Algolia and Reddit RSS
-- `radar/extract.py`: rule-based headline parser (company, headcount, %, retro/speculative flags)
+- `radar/sources.py`: fetchers for Google News RSS (English), SEC EDGAR 8-K Item 2.05, CA and MD WARN, HN Algolia and Reddit RSS
+- `radar/sources_intl.py`: Google News in 55 country editions with local-language keywords, GDELT DOC 2.0, Japan TDnet, India NSE, ASX
+- `radar/warn_more.py`: WARN notices for Texas (data.texas.gov), Pennsylvania, Colorado and Washington
+- `radar/extract.py`: rule-based English headline parser (company, headcount, %, retro/speculative flags, announced multi-year plans)
+- `radar/intl.py`: the same rules for 29 other languages (local layoff words, job nouns, number formats, rumour wording, CJK patterns)
 - `radar/consensus.py`: clustering, re-report folding, weighted-median headcount, confidence, visibility gate
 - `radar/build.py`, `radar/og.py`: static site, 1200×630 share cards and 1080×1920 stories
 - `radar/places.py`: curated HQ cities and employee totals (for "% of staff"), Nominatim geocoding with a DB cache
@@ -36,7 +41,7 @@ Requirements: Python 3.11+ and Pillow (for share cards). Everything else is stdl
 - `site/static/globe.js`: front-page globe/map (d3-geo on canvas, vendored): zoom (wheel, pinch, +/−), pan/rotate, labels at higher zoom, the click panel, live counter and feed
 - `site/static/gate.js`: "Dive deeper" table preview, the blurred rows and the email-only sign-up (soft gate, unlocks client-side)
 - `functions/api/[[route]].js`: Cloudflare Pages Function for `/api/signup`, `/api/event` and `/api/stats` (D1 or KV)
-- `site/static/`: CSS, JS, fonts. `research/notes.md`: competitor and source research
+- `site/static/`: CSS, JS, fonts. `research/notes.md`: competitor and source research; `research/sources-by-country.md`: coverage per country; `research/scale.md`: run costs and the full-coverage extrapolation
 - `data/` (gitignored): SQLite DB and HTTP cache. `dist/` (gitignored): build output
 
 ## Deploy (hourly, prepared but not active)

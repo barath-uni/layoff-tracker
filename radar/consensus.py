@@ -23,6 +23,32 @@ def publisher_key(name):
     return re.sub(r"[^a-z0-9]", "", (name or "").lower().replace("the ", ""))
 
 
+SECOND_LEVEL = {"co", "com", "org", "net", "gov", "ac", "ne", "or", "go", "edu", "gob", "nic", "info", "biz", "news", "gv", "web"}
+
+
+def domain_key(host):
+    """'www.sueddeutsche.de' -> 'sueddeutsche', 'bbc.co.uk' -> 'bbc', 'finance.yahoo.com' -> 'yahoo'."""
+    host = re.sub(r"^https?://", "", (host or "").lower()).split("/")[0].split(":")[0]
+    labels = [x for x in host.split(".") if x and x not in ("www", "m", "amp", "mobile")]
+    if not labels:
+        return ""
+    if len(labels) >= 3 and labels[-2] in SECOND_LEVEL:
+        return labels[-3]
+    return labels[-2] if len(labels) >= 2 else labels[0]
+
+
+def item_pubkey(r):
+    """One key per outlet across sources: Google News names it, GDELT gives its domain; both map to the domain."""
+    if r["tier"] == "official":
+        return r["source"]
+    meta = r["meta"]
+    host = meta.get("publisher_url") or meta.get("domain")
+    if not host and r["source"] in ("hn", "gdelt"):
+        host = r["url"]
+    k = domain_key(host) if host else ""
+    return k or publisher_key(r["publisher"])
+
+
 def weighted_median(pairs):
     pairs = sorted(pairs)
     total = sum(w for _, w in pairs)
@@ -34,40 +60,87 @@ def weighted_median(pairs):
     return pairs[-1][0]
 
 
+CHUNK = 2000
+
+
+def iter_items(con):
+    """Stream items in id order, a chunk at a time (the corpus never sits in memory as a whole)."""
+    last = 0
+    while True:
+        rows = con.execute("SELECT id, source, tier, publisher, url, title, text, published, meta FROM items "
+                           "WHERE published IS NOT NULL AND id > ? ORDER BY id LIMIT ?", (last, CHUNK)).fetchall()
+        if not rows:
+            return
+        for r in rows:
+            r = dict(r)
+            r["meta"] = json.loads(r["meta"] or "{}")
+            yield r
+        last = rows[-1]["id"]
+
+
 def build_claims(con):
-    rows = [dict(r) for r in con.execute("SELECT * FROM items WHERE published IS NOT NULL")]
-    for r in rows:
-        r["meta"] = json.loads(r["meta"] or "{}")
-    # Gazetteer: known companies, official filers, and names from sentence-case headlines (reliable boundaries).
+    from .extract import item_lang
+    from .intl import VOCAB, Gazetteer, learn_vocab
+    VOCAB.clear()
+    from .ref import ALIASES
+    from .util import mem_guard
+    # Gazetteer: known companies, official filers, and names from sentence-case English headlines (reliable boundaries).
     gaz = set(KNOWN)
-    for r in rows:
+    names = {v[0]: k for k, v in KNOWN.items()}
+    names.update({a.replace("-", " "): b for a, b in ALIASES.items() if len(a) > 3})
+    seen_en = Counter()
+    for r in iter_items(con):
         if r["tier"] == "official" and r["meta"].get("company"):
             gaz.add(canonical_slug(r["meta"]["company"]))
-    for r in rows:
-        if r["tier"] != "official" and not is_title_case(r["title"]):
+            if r["source"] != "tdnet":
+                from .extract import clean_company
+                co = clean_company(r["meta"]["company"])
+                if co:
+                    names.setdefault(co, canonical_slug(co))
+        elif r["tier"] != "official" and item_lang(r) != "en":
+            learn_vocab(r["title"], item_lang(r))
+        elif r["tier"] != "official" and item_lang(r) == "en" and not is_title_case(r["title"]):
             ex = extract_headline(r["title"])
             if ex:
                 gaz.add(canonical_slug(ex["company"]))
+                seen_en[ex["company"]] += 1
+    for n, k in seen_en.items():
+        if k >= 2:  # a name seen in two or more English headlines is a fair bet for matching other languages
+            names.setdefault(n, canonical_slug(n))
+    intl_gaz = Gazetteer(names)
+    del seen_en
+    mem_guard()
     llm = get_llm()
     con.execute("DELETE FROM claims")
     seen = set()
     n = 0
-    for r in rows:
-        key = (publisher_key(r["publisher"]), re.sub(r"\W+", "", r["title"].lower())[:80])
+    batch = []
+    for r in iter_items(con):
+        pk = item_pubkey(r)
+        key = (pk, re.sub(r"\W+", "", r["title"].lower())[:80])
         if r["tier"] != "official":
             if key in seen:
-                continue  # same headline syndicated through several queries/editions
+                continue  # same headline syndicated through several queries/editions/sources
             seen.add(key)
-        c = claims_from_item(r, gaz, llm)
+        c = claims_from_item(r, gaz, llm, intl_gaz)
         if not c:
             continue
-        con.execute("""INSERT INTO claims(item_id, company, slug, headcount, pct, kind, date, country, location, industry,
-                       weight, speculative, method) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (r["id"], c["company"], canonical_slug(c["company"]), c["headcount"], c["pct"], c["kind"], c["date"],
-                     c["country"], c["location"], c["industry"], c["weight"], c["speculative"], c["method"]))
+        batch.append((r["id"], c["company"], canonical_slug(c["company"]), c["headcount"], c["pct"], c["kind"], c["date"],
+                      c["country"], c["location"], c["industry"], c["weight"], c["speculative"], c["method"],
+                      c.get("horizon"), c.get("lang"), c.get("src_country"), pk))
         n += 1
+        if len(batch) >= 1000:
+            _insert_claims(con, batch)
+            batch = []
+    _insert_claims(con, batch)
     con.commit()
     return n
+
+
+def _insert_claims(con, batch):
+    con.executemany("""INSERT INTO claims(item_id, company, slug, headcount, pct, kind, date, country, location, industry,
+                       weight, speculative, method, horizon, lang, src_country, pubkey) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    batch)
 
 
 def _cluster(claims):
@@ -92,16 +165,16 @@ def _cluster(claims):
 def _score(cl):
     by_pub = {}
     for c in cl:
-        k = publisher_key(c["publisher"]) if c["tier"] != "official" else c["source"] + str(c["item_id"])
+        k = c["pubkey"] if c["tier"] != "official" else c["source"] + str(c["item_id"])
         by_pub[k] = max(by_pub.get(k, 0), c["weight"])
     miss = 1.0
     for w in by_pub.values():
         miss *= (1 - w)
-    return 1 - miss, len({publisher_key(c["publisher"]) for c in cl if c["weight"] > 0})
+    return 1 - miss, len({c["pubkey"] for c in cl if c["weight"] > 0})
 
 
 def _headcount(cl):
-    edgar = [c["headcount"] for c in cl if c["source"] == "edgar" and c["headcount"]]
+    edgar = [c["headcount"] for c in cl if c["source"] in ("edgar", "tdnet", "nse") and c["tier"] == "official" and c["headcount"]]
     warn_rows = {(c["company"], c["date"], c["location"], c["headcount"]) for c in cl if c["source"].startswith("warn")}
     warn = sum(r[3] for r in warn_rows)
     buyouts = [c["headcount"] for c in cl if c["kind"] == "buyout" and c["headcount"]]
@@ -216,13 +289,25 @@ def resolve_entities(rows):
             names[k] = _norm(n)
     dates = {k: sorted(d(c["date"]) for c in v) for k, v in by.items()}
     remap = {}
+    name_index = defaultdict(list)  # normalised name -> slugs (only big enough stories can absorb others)
+    for b, nb in names.items():
+        if size[b] >= 3:
+            name_index[nb.strip()].append(b)
     for a, claims in by.items():
         titles = [_norm(c["title"]) for c in claims if c["tier"] != "official"]
         na = names.get(a)
         if not titles or not na or a in KNOWN or any(c["tier"] == "official" for c in claims):
             continue
+        cands = set()
+        for t in titles:
+            w = t.split()
+            for i in range(len(w)):
+                for n in (1, 2, 3, 4):
+                    for b in name_index.get(" ".join(w[i:i + n]), ()):
+                        cands.add(b)
         best, best_share = None, 0.0
-        for b, nb in names.items():
+        for b in cands:
+            nb = names[b]
             if b == a or size[b] < max(3, size[a]) or nb == na:
                 continue
 
@@ -247,12 +332,20 @@ def resolve_entities(rows):
     return remap
 
 
+EXCHANGE = {"edgar", "nse", "tdnet", "asx"}
+WORKFORCE_JA = re.compile(r"人員|退職|従業員|雇用|解雇")
+
+
 def build_events(con):
     rows = [dict(r) for r in con.execute(
-        "SELECT c.*, i.tier, i.source, i.publisher, i.title, i.url, i.text FROM claims c JOIN items i ON i.id = c.item_id")]
+        "SELECT c.*, i.tier, i.source, i.publisher, i.title, i.url, "
+        "CASE WHEN i.source IN ('edgar','nse','tdnet','asx') THEN i.text ELSE '' END AS text "
+        "FROM claims c JOIN items i ON i.id = c.item_id")]
     for r in rows:
-        # An 8-K Item 2.05 is an exit/disposal filing; it only counts as a layoff record when it mentions people.
-        if r["source"] == "edgar" and not (r["headcount"] or r["pct"] or WORKFORCE.search(r["text"] or "")):
+        # An exchange filing (8-K Item 2.05, NSE closure, TDnet restructuring) only counts as a layoff record when it
+        # mentions people; a plant or subsidiary closure on its own says nothing about jobs.
+        if r["source"] in EXCHANGE and not (r["headcount"] or r["pct"] or WORKFORCE.search(r["text"] or "")
+                                            or WORKFORCE_JA.search(r["title"] or "")):
             r["tier"], r["weight"] = "filing-nonworkforce", 0.0
     remap = resolve_entities(rows)
     by_slug = defaultdict(list)
@@ -273,7 +366,8 @@ def build_events(con):
             Counter(c["industry"] for c in claims if c["industry"])
         co_industry = known[1] if known else (ind_votes.most_common(1)[0][0] if ind_votes else "Other")
         cty_votes = Counter(c["country"] for c in claims if c["country"] and c["tier"] == "official") or \
-            Counter(c["country"] for c in claims if c["country"] and "multi" not in c["country"])
+            Counter(c["country"] for c in claims if c["country"] and "multi" not in c["country"]) or \
+            Counter(c["src_country"] for c in claims if c["src_country"])  # last resort: where the outlets are
         co_country = known[2] if known else (cty_votes.most_common(1)[0][0] if cty_votes else "Unknown")
         for cl in _dedupe_company(_cluster(claims)):
             conf, n_pub = _score(cl)
@@ -283,9 +377,18 @@ def build_events(con):
                 conf *= 0.9  # sources disagree
             ev_cty = Counter(c["country"] for c in cl if c["country"] and "multi" not in c["country"]).most_common(1)
             country = co_country
-            kinds = {c["kind"] for c in cl}
+            kinds = {c["kind"] for c in cl if c["kind"] != "plan"} or {"layoff"}
             kind = "buyout" if kinds == {"buyout"} else ("closure" if kinds == {"closure"} else "layoff")
-            n_major = len({publisher_key(c["publisher"]) for c in cl if c["tier"] == "major"})
+            # An announced multi-year plan: enough of the coverage gives the deadline ("by 2030"); the rest just omits it.
+            plan_pubs = {c["pubkey"] for c in cl if c["kind"] == "plan" and not c["speculative"]}
+            num_pubs = {c["pubkey"] for c in cl if (c["headcount"] or c["pct"]) and c["tier"] != "official"}
+            horizon = None
+            if plan_pubs and not has_off and (len(plan_pubs) >= 2 or len(plan_pubs) >= 0.3 * max(1, len(num_pubs))):
+                kind = "plan"
+                hz = [c["horizon"] for c in cl if c.get("horizon")]
+                years = sorted(h for h in hz if h != "multi-year")
+                horizon = years[-1] if years else "multi-year"
+            n_major = len({c["pubkey"] for c in cl if c["tier"] == "major"})
             if has_off:
                 label, score = "Official", max(95, round(conf * 100))
             else:
@@ -309,10 +412,10 @@ def build_events(con):
             visible = int(kind != "buyout" and (has_off or (n_pub >= 2 and conf >= VISIBLE_MIN)))
             n_vis += visible
             cur = con.execute("""INSERT INTO events(slug, company, start, end, headcount, low, high, pct, confidence, label,
-                industry, country, n_sources, n_publishers, has_official, kind, headline, visible)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                industry, country, n_sources, n_publishers, has_official, kind, headline, visible, horizon)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (slug, display, cl[0]["date"], cl[-1]["date"], est, low, high, pct, score, label, co_industry, country,
-                 len(cl), n_pub, int(has_off), kind, headline, visible))
+                 len(cl), n_pub, int(has_off), kind, headline, visible, horizon))
             con.executemany("INSERT INTO event_claims VALUES(?,?)", [(cur.lastrowid, c["id"]) for c in cl])
     con.commit()
     return n_vis

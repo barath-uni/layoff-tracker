@@ -67,6 +67,13 @@ def load():
             rows.append(s)
         ev["sources"] = rows
     for ev in evs:
+        # Announced multi-year plans ("35,000 jobs by 2030") are shown but never counted: the number moves to plan_n.
+        ev["plan_n"] = ev["plan_pct"] = None
+        if ev["kind"] == "plan":
+            ev["plan_n"], ev["plan_pct"] = ev["headcount"], ev["pct"]
+            ev["headcount"] = ev["low"] = ev["high"] = ev["pct"] = None
+            ev["label"] = ev["label"] if ev["label"] != "Official" else "Official"
+    for ev in evs:
         ev["lat"] = ev["lon"] = None
         for place in event_places(ev):
             hit = geocode(con, place)
@@ -118,8 +125,15 @@ def staff_share(ev):
     if ev["headcount"] and wf:
         p = 100 * ev["headcount"] / wf[0]
         shown = "<0.1%" if p < 0.1 else (f"≈{p:.1f}%" if p < 10 else f"≈{p:.0f}%")
-        return shown, f"of ≈{wf[0]:,} staff (FY{wf[1]} annual report)"
+        return shown, f"of ≈{wf[0]:,} staff ({wf[3] if len(wf) > 3 else 'annual report'}, FY{wf[1]})"
     return None, None
+
+
+def wf_link(slug, ev):
+    wf = WORKFORCE.get(slug)
+    if not wf or len(wf) < 3 or "as reported" in (ev.get("pct_note") or ""):
+        return ""
+    return f' · <a href="{e(wf[2])}" target="_blank" rel="noopener nofollow">source</a>'
 
 
 def early_warnings(evs):
@@ -149,6 +163,8 @@ def week_index(d):
 
 
 def stats(evs):
+    plans = [x for x in evs if x["kind"] == "plan"]
+    evs = [x for x in evs if x["kind"] != "plan"]
     counted = [x for x in evs if x["headcount"]]
     d30 = (TODAY - timedelta(days=30)).isoformat()
     d60 = (TODAY - timedelta(days=60)).isoformat()
@@ -181,7 +197,13 @@ def stats(evs):
         c["company"], c["industry"], c["country"] = x["company"], x["industry"], x["country"]
         c["latest"] = max(c["latest"], x["start"])
         c["slug"] = x["slug"]
+    for x in plans:
+        if x["slug"] not in comp:
+            c = comp[x["slug"]]
+            c.update(company=x["company"], industry=x["industry"], country=x["country"], latest=x["start"], slug=x["slug"])
     s["companies_list"] = sorted(comp.values(), key=lambda c: (-c["n"], c["company"]))
+    s["plans"], s["plan_people"] = len(plans), sum(x["plan_n"] or 0 for x in plans)
+    s["countries"] = len({x["country"] for x in evs if x["country"] and x["country"] != "Unknown"})
     return s
 
 
@@ -220,7 +242,16 @@ def conf_badge(ev):
             f'source{"s" if ev["n_publishers"] != 1 else ""}"><span class="meter">{bars}</span>{e(ev["label"])}</span>')
 
 
+def plan_text(ev):
+    when = f"by {ev['horizon']}" if ev.get("horizon") and ev["horizon"] != "multi-year" else "over several years"
+    return f"announced plan, {when} · not counted"
+
+
 def headcount_html(ev, big=False):
+    if ev.get("plan_n"):
+        return f'{fmt(ev["plan_n"])}'
+    if ev.get("plan_pct"):
+        return f'{ev["plan_pct"]:g}%'
     if ev["headcount"]:
         return f'{fmt(ev["headcount"])}'
     if ev["pct"]:
@@ -229,6 +260,8 @@ def headcount_html(ev, big=False):
 
 
 def headcount_sub(ev):
+    if ev["kind"] == "plan":
+        return plan_text(ev)
     if ev["headcount"] and ev["low"] and ev["high"] and ev["low"] != ev["high"]:
         return f'sources say {fmt(ev["low"])}–{fmt(ev["high"])}'
     if ev["headcount"] and ev["pct"]:
@@ -392,7 +425,7 @@ def home(evs, s, updated, industries, countries):
     slim = [{"s": x["slug"], "c": x["company"], "d": x["start"], "n": x["headcount"], "lo": x["low"], "hi": x["high"],
              "p": x["pct"], "ps": x["pct_show"], "pn": x["pct_note"], "l": x["label"], "cf": x["confidence"],
              "i": x["industry"], "k": x["country"], "h": x["headline"], "np": x["n_publishers"],
-             "la": x["lat"], "lo2": x["lon"],
+             "la": x["lat"], "lo2": x["lon"], "pl": x["plan_n"], "hz": x["horizon"],
              "src": [[r["publisher"], r["url"]] for r in x["sources"][:3]]} for x in evs]
     on_map = sum(1 for x in evs if x["lat"] is not None)
     iso = updated.isoformat()
@@ -474,6 +507,12 @@ def source_row(src):
 def statement(cevs):
     """Deadpan, postable line for a company's latest event: (lead, big, tail)."""
     c, lev = cevs[0]["company"], cevs[0]
+    if lev["kind"] == "plan" and len(cevs) > 1:
+        lev = next((x for x in cevs if x["kind"] != "plan"), lev)
+    if lev["kind"] == "plan":
+        when = f"by {lev['horizon']}" if lev.get("horizon") and lev["horizon"] != "multi-year" else "over several years"
+        big = fmt(lev["plan_n"]) if lev["plan_n"] else (f'{lev["plan_pct"]:g}%' if lev["plan_pct"] else "Undisclosed")
+        return f"{c} plans to cut", big, f"jobs {when}. An announced plan, not yet counted."
     recent = (TODAY - date.fromisoformat(lev["start"])).days <= 14
     verb = "just cut" if recent else "cut"
     when = "" if recent else f" in {date.fromisoformat(lev['start']).strftime('%B')}"
@@ -488,14 +527,14 @@ def statement(cevs):
 
 def company_page(slug, cevs, s):
     c = cevs[0]
-    total = sum(x["headcount"] or 0 for x in cevs)
+    total = sum(x["headcount"] or 0 for x in cevs if x["kind"] != "plan")
     url = f"{SITE_URL}/company/{slug}/"
     best = max(cevs, key=lambda x: LABEL_STEPS.get(x["label"], 0))
     number = fmt(total) if total else (f'{cevs[0]["pct"]:g}%' if cevs[0]["pct"] else "Undisclosed")
     lead, big, tail = statement(cevs)
     share_text = f"{lead} {big} {tail}".replace("Undisclosed No number has been published yet.", "").strip() + " Sources:"
     pct_block = (f'<div><div class="k">Share of staff (latest)</div><div class="v">{e(c["pct_show"])}</div>'
-                 f'<div class="k" style="margin-top:2px">{e(c["pct_note"])}</div></div>') if c["pct_show"] else ""
+                 f'<div class="k" style="margin-top:2px">{e(c["pct_note"])}{wf_link(slug, c)}</div></div>') if c["pct_show"] else ""
     timeline = []
     for ev in cevs:
         srcs = "".join(source_row(x) for x in ev["sources"][:40])
@@ -550,6 +589,17 @@ def stat_page(key, eyebrow, number, sub, share_text, cta=("/", "See the full tra
     return page(f"/stat/{key}/", f"{eyebrow}: {number}", sub, body, f"/og/stat-{key}.png")
 
 
+SOURCE_NAMES = {
+    "gnews": "News: Google News, English (US edition, year-to-date)",
+    "gnews_intl": "News: Google News, 55 country editions in 29 languages",
+    "gdelt": "News: GDELT (machine-translated global news, last ~3 months)",
+    "edgar": "SEC 8-K Item 2.05 filings", "warn_ca": "WARN: California", "warn_md": "WARN: Maryland",
+    "warn_tx": "WARN: Texas", "warn_pa": "WARN: Pennsylvania", "warn_co": "WARN: Colorado", "warn_wa": "WARN: Washington",
+    "tdnet": "Japan: TDnet timely disclosures", "nse": "India: NSE corporate announcements",
+    "asx": "Australia: ASX announcements", "hn": "Hacker News", "reddit": "Reddit r/layoffs",
+}
+
+
 def methodology_page(s, counts):
     src_rows = "".join(f"<li><strong>{e(k)}</strong>: {fmt(v)} items</li>" for k, v in counts)
     body = f"""<div class="prose">
@@ -557,9 +607,18 @@ def methodology_page(s, counts):
 <p>{NAME} counts layoffs from public records and reporting. It never estimates numbers that no source has stated.
 Every figure on the site links to the sources it came from.</p>
 <h2>Sources</h2><ul>{src_rows}</ul>
-<p>Official sources are SEC 8-K filings under Item 2.05 (exit or disposal activities) and state WARN notices
-(California EDD, Maryland DOL). News comes from Google News searches across several English editions, plus Hacker News and r/layoffs as weak signals.
+<p>Official sources are SEC 8-K filings under Item 2.05 (exit or disposal activities), state WARN notices
+(California, Maryland, Texas, Pennsylvania, Colorado, Washington), Japan's TDnet disclosures and India's NSE announcements.
+News comes from Google News in 55 country editions, searched with layoff wording in each local language
+(Stellenabbau, licenciements, despidos, demissões, esuberi, ontslagen, 希望退職, 裁员, 구조조정, छंटनी, PHK and more), and from GDELT,
+which indexes machine-translated news in about 65 languages. Hacker News and r/layoffs are weak signals.
 X and LinkedIn are not used: their APIs are paid or prohibit this use.</p>
+<h2>Languages</h2>
+<p>Headlines in other languages are parsed with the same rules as English ones: a local layoff word, a company, and a number next to a
+local job noun ("1.200 Stellen", "1 200 postes", "3 mil empleos", "2万人"). Rumour wording in each language marks a report as speculative.
+Where an outlet is in one country and the headline names no country, the company is placed in the outlet's country.</p>
+<p>In Japan, firms cut staff through voluntary-retirement programs (希望退職), because dismissals are tightly restricted. A program with a
+stated target or a reported number of leavers counts as a layoff there. The size of the eligible pool ("open to 60,000 staff") never counts.</p>
 <h2>Names and duplicates</h2>
 <p>Products, studios, units and executives often appear in headlines instead of the employer ("Ghost of Yōtei developer Sucker Punch", "Microsoft's Xbox").
 When most of a name's headlines also name a bigger, overlapping story right next to it, both are merged under the employer.</p>
@@ -567,7 +626,12 @@ When most of a name's headlines also name a bigger, overlapping story right next
 <p>Each headline is parsed for a company, a headcount or percentage, and a date. Lists, opinion pieces, buyout offers and
 denials are discarded. Reports about the same company within two weeks of each other form one event. Later coverage that repeats
 an earlier figure, or revises it on the same scale, is folded into the original event instead of being counted twice.
-Numbers that describe several years, a past total or a long-term target ("by 2030", "over the past year") are not counted.</p>
+Numbers that describe a past total ("over the past year") are not counted.</p>
+<h2>Announced plans</h2>
+<p>A multi-year target ("35,000 jobs by 2030", "over the next five years") is shown as an <strong>announced plan</strong> with its
+deadline, but it is left out of the live counter and the yearly total ({fmt(s.get("plans", 0))} plans, {fmt(s.get("plan_people", 0))} jobs in {YEAR_START.year}).
+We do not spread a plan over its years: companies rarely say how fast it will happen, and much of it is often done through attrition.
+When a round of the plan happens and is reported (a WARN notice, a plant closure, "cuts 1,000 jobs this week"), that round is counted.</p>
 <h2>Consensus number</h2>
 <p>The event's number is the weighted median of the firm claims. Filings outrank news, and news outranks rumour. Figures far from the median
 are ignored. When sources disagree, the page shows the range (for example, "sources say 4,000–15,000"). WARN notices are only a floor:
@@ -575,7 +639,8 @@ they cover one state, so they never lower a company-wide figure. Figures above 5
 Rumoured or hypothetical figures never set the number; once a layoff is confirmed, earlier rumour coverage joins that event.</p>
 <h2>Share of staff</h2>
 <p>When sources state a percentage, we show it. Otherwise, for large companies, we divide the headcount by the employee total from the
-company's last annual report before {YEAR_START.year} and mark it with ≈. Where the employee total is unknown, we show the count only.</p>
+company's latest annual report (10-K, 20-F or the company's own annual report, linked in the table source) and mark it with ≈.
+Where the employee total is unknown, we show the count only.</p>
 <h2>The live counter</h2>
 <p>Between hourly data updates, the counter on the front page climbs at the average pace of the last 30 days. It is an estimate, labelled as one,
 and resets to the verified total on every update.</p>
@@ -588,7 +653,7 @@ and resets to the verified total on every update.</p>
 <p>Anything weaker is not shown. Single-source stories and social posts on their own never appear, and 8-K restructuring filings that don't mention people are left out.
 In {YEAR_START.year}, {fmt(s['undisclosed'])} shown events have no stated headcount. They count as events but add nothing to the totals.</p>
 <h2>Known limits</h2>
-<ul><li>Totals are a floor: many layoffs are never reported, and WARN coverage is limited to two states for now.</li>
+<ul><li>Totals are a floor: many layoffs are never reported, and WARN coverage is limited to six US states for now.</li>
 <li>Country is the company's headquarters unless a filing or the sources say where the cuts happen.</li>
 <li>Headline parsing is rule-based. An optional LLM extractor can be plugged in (<code>LR_LLM_CMD</code>) but is off.</li></ul>
 <p>Data: <a href="/data.json">data.json</a> holds every shown event with its sources. Map places: <a href="https://www.geonames.org/">GeoNames</a> (CC BY 4.0) and OpenStreetMap Nominatim; land outlines: Natural Earth via world-atlas.</p></div>"""
@@ -668,16 +733,14 @@ def build():
             og.card(DIST / f"og/stat-{key}.png", eyebrow, number, sub, stamp, spark=s["weekly"])
 
     con = connect()
-    counts = [(k, v) for k, v in con.execute(
-        "SELECT CASE source WHEN 'gnews' THEN 'News (Google News)' WHEN 'edgar' THEN 'SEC 8-K Item 2.05' "
-        "WHEN 'warn_ca' THEN 'WARN: California' WHEN 'warn_md' THEN 'WARN: Maryland' WHEN 'hn' THEN 'Hacker News' "
-        "ELSE 'Reddit r/layoffs' END, COUNT(*) FROM items GROUP BY source ORDER BY 2 DESC")]
+    counts = [(SOURCE_NAMES.get(k, k), v) for k, v in con.execute(
+        "SELECT source, COUNT(*) FROM items GROUP BY source ORDER BY 2 DESC")]
     write("/methodology/", methodology_page(s, counts))
     write("/404.html", page("/404.html", f"Not found: {NAME}", "Page not found.",
                             '<div class="prose"><h1>Not found</h1><p>That page does not exist. <a href="/">Back to the tracker</a>.</p></div>'))
     data = {"updated": updated.isoformat(), "totals": {k: s[k] for k in ("ytd", "d30", "events", "companies")},
             "events": [{k: x[k] for k in ("slug", "company", "start", "end", "headcount", "low", "high", "pct", "confidence",
-                                          "label", "industry", "country", "headline")}
+                                          "label", "industry", "country", "headline", "kind", "horizon", "plan_n")}
                        | {"sources": [{"publisher": r["publisher"], "tier": r["tier"], "url": r["url"], "title": r["title"],
                                        "date": r["date"], "headcount": r["headcount"], "pct": r["pct"]} for r in x["sources"]]}
                        for x in evs]}

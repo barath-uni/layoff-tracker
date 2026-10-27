@@ -11,7 +11,7 @@ from datetime import date, timedelta
 from io import BytesIO
 
 from .ref import DOMAIN_PUBLISHER, US_STATE_CODES, industry_from_naics, industry_from_sic, publisher_tier
-from .util import SEC_UA, TODAY, YEAR_START, fetch, parse_date, strip_html
+from .util import SEC_UA, SINCE, TODAY, fetch, parse_date, strip_html
 
 # ---------------------------------------------------------------- Google News
 GN_QUERIES = ['layoffs', '"lay off"', '"job cuts"', '"cut jobs"', '"workforce reduction"', 'redundancies']
@@ -45,8 +45,8 @@ def _gn_parse(body, edition):
     return out
 
 
-def _want_backfill():
-    """LR_BACKFILL=1 always, 0 never, auto (default): first run, or once a day at 03:xx UTC."""
+def _want_backfill(source="gnews"):
+    """LR_BACKFILL=1 always, 0 never, auto (default): first run of that source, or once a day at 03:xx UTC."""
     import os
     from datetime import datetime, timezone
     from .util import DATA
@@ -55,7 +55,7 @@ def _want_backfill():
         return flag == "1"
     import sqlite3
     try:
-        n = sqlite3.connect(DATA / "radar.db").execute("SELECT COUNT(*) FROM items WHERE source = 'gnews'").fetchone()[0]
+        n = sqlite3.connect(DATA / "radar.db").execute("SELECT COUNT(*) FROM items WHERE source = ?", (source,)).fetchone()[0]
     except sqlite3.Error:
         n = 0
     return n == 0 or datetime.now(timezone.utc).hour == 3
@@ -63,26 +63,28 @@ def _want_backfill():
 
 def google_news(backfill=None):
     backfill = _want_backfill() if backfill is None else backfill
-    items, urls = [], []
+    urls = []
     # Recent window across several English editions.
     for gl, hl, ceid in GN_RECENT_EDITIONS:
         for q in GN_QUERIES[:3]:
             urls.append((_gn_url(q + " when:30d", gl, hl, ceid), gl))
     # Year-to-date backfill in half-month windows (Google caps each query at 100 results).
     if backfill:
-        d = YEAR_START
+        d = SINCE
         while d < TODAY:
             e = min(d + timedelta(days=15), TODAY + timedelta(days=1))
             for q in GN_QUERIES:
                 urls.append((_gn_url(f"{q} after:{d.isoformat()} before:{e.isoformat()}"), "US"))
             d = e
+    n = 0
     for i, (u, ed) in enumerate(urls):
         body = fetch(u, ttl=6 * 3600, min_interval=1.2)
         if body:
-            items += _gn_parse(body, ed)
+            got = _gn_parse(body, ed)
+            n += len(got)
+            yield from got
         if i % 20 == 0:
-            print(f"  gnews {i + 1}/{len(urls)} queries, {len(items)} items")
-    return items
+            print(f"  gnews {i + 1}/{len(urls)} queries, {n} items")
 
 
 # ---------------------------------------------------------------- SEC EDGAR 8-K Item 2.05
@@ -103,7 +105,7 @@ def _edgar_headcount(text):
 
 
 def edgar(start=None):
-    start = start or YEAR_START.isoformat()
+    start = start or SINCE.isoformat()
     items, frm = [], 0
     while True:
         u = ("https://efts.sec.gov/LATEST/search-index?q=%22Item%202.05%22&forms=8-K&dateRange=custom"
@@ -134,7 +136,7 @@ def edgar(start=None):
                          "industry": industry_from_sic((s.get("sics") or [None])[0]), "kind": "layoff"},
             })
         frm += 100
-        if frm >= hits["total"]["value"] or frm > 1000:
+        if frm >= hits["total"]["value"] or frm > 3000:
             break
     print(f"  edgar {len(items)} filings")
     return items
@@ -188,7 +190,7 @@ def warn_ca():
             n = int(float(rec.get("No. Of Employees") or 0))
         except ValueError:
             continue
-        if not notice or notice < YEAR_START.isoformat() or n <= 0:
+        if not notice or notice < SINCE.isoformat() or n <= 0:
             continue
         company = strip_html(rec.get("Company", ""))
         addr = rec.get("Address", "")
@@ -246,7 +248,7 @@ def warn_md():
         rec = dict(zip(header, r))
         notice = parse_date(rec.get("Notice Date"))
         typ = rec.get("Type", "")
-        if not notice or notice < YEAR_START.isoformat() or "Temporary" in typ:
+        if not notice or notice < SINCE.isoformat() or "Temporary" in typ:
             continue
         try:
             n = int(re.sub(r"\D", "", rec.get("Total Employees", "")) or 0)
@@ -275,7 +277,7 @@ def warn_md():
 # ---------------------------------------------------------------- Hacker News (Algolia)
 def hackernews():
     items = []
-    since = int(date(YEAR_START.year, 1, 1).strftime("%s"))
+    since = int(date(SINCE.year, SINCE.month, SINCE.day).strftime("%s"))
     for q in ["layoffs", "lays off", "laying off", "job cuts"]:
         for page in range(5):
             u = ("https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=100"
@@ -323,4 +325,30 @@ def reddit():
     return items
 
 
-ALL = {"gnews": google_news, "edgar": edgar, "warn_ca": warn_ca, "warn_md": warn_md, "hn": hackernews, "reddit": reddit}
+def _all():
+    from .sources_intl import asx, gdelt, gnews_intl, nse, tdnet
+    from .warn_more import warn_co, warn_pa, warn_tx, warn_wa
+    return {"gnews": google_news, "gnews_intl": gnews_intl, "gdelt": gdelt, "edgar": edgar, "warn_ca": warn_ca,
+            "warn_md": warn_md, "warn_tx": warn_tx, "warn_pa": warn_pa, "warn_co": warn_co, "warn_wa": warn_wa,
+            "tdnet": tdnet, "nse": nse, "asx": asx, "hn": hackernews, "reddit": reddit}
+
+
+class _Lazy(dict):
+    def _fill(self):
+        if not dict.__len__(self):
+            self.update(_all())
+
+    def __getitem__(self, k):
+        self._fill()
+        return dict.__getitem__(self, k)
+
+    def __iter__(self):
+        self._fill()
+        return dict.__iter__(self)
+
+    def __len__(self):
+        self._fill()
+        return dict.__len__(self)
+
+
+ALL = _Lazy()

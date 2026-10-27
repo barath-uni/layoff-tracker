@@ -32,9 +32,14 @@ RX_PCT = re.compile(r"(\d+(?:\.\d+)?)\s*(?:%|percent|per\s+cent)\s+of\s+(?:its\s
 KEYWORD = re.compile(r"(?i)lay(?:s|ing)?\s*off|laid off|layoff|job cuts|cut(?:s|ting)? .{0,30}(jobs|workforce|staff|employees|workers|positions|roles)|redundanc|workforce reduction|eliminat\w+ .{0,25}(jobs|positions|roles)|slash\w* .{0,20}(jobs|workforce|staff)|shed\w* .{0,20}jobs|axe\w* .{0,20}jobs|furlough")
 ROUNDUP = re.compile(r"(?i)\b(tracking|tracker|list of|these companies|companies (?:that|which|cutting|laying)|and others|roundup|so far this year|all the (?:job|layoff)|biggest layoffs of|every company|here are|here's who|which companies|layoffs? this week|week in layoffs|hit this week|in history)\b")
 NEGATIVE = re.compile(r"(?i)\b(block layoffs|blocks layoffs|no layoffs|without layoffs|rules? out|denies|won't lay|will not lay|avoid(?:s|ed)? layoffs|not planning|reverses?|rehir\w+|hiring spree|lawsuit|sued|sues|settlement)\b")
-SPECULATIVE = re.compile(r"(?i)\b(reportedly|report says|sources say|sources said|considering|weighs|weighing|mulls|could|may|might|rumou?r|according to (?:a )?report|eyes|looming|soon)\b|\?|[:\-–] report$")
+SPECULATIVE = re.compile(r"(?i)\b(reportedly|report says|sources say|sources said|considering|weighs|weighing|mulls|could|may|might|rumou?r|according to (?:a )?report|eyes|looming|soon|expected to|likely to|set to face|braces for|fears?|at risk|in jeopardy|threatened)\b|\?|[:\-–] report$")
+PROTEST = re.compile(r"(?i)\b(protest\w*|rall(?:y|ies|ied)|march(?:es|ed)? against|strike|strikes|picket\w*|demonstrat\w*)\b")
 # Numbers that describe the past or a multi-year target, not this event.
-RETRO = re.compile(r"(?i)\b(in (?:the )?(?:past|last) (?:\w+ )?(?:years?|months?)|over (?:the )?(?:past|last)|in (?:two|three|four|five|six|seven|eight|ten|\d+) (?:years|months)|in (?:a|one|the) year|since 20\d\d|so far|last year|this year|in 20\d\d|in FY ?\d+|by (?:end of |the end of )?20\d\d|over (?:\w+ )?years|in total|total|cumulative|to date|years? of|over the years|end of (?:the )?decade|over the next (?:\w+ )?years|year-to-date|ytd)\b")
+RETRO = re.compile(r"(?i)\b(in (?:the )?(?:past|last) (?:\w+ )?(?:years?|months?)|over (?:the )?(?:past|last)|in (?:two|three|four|five|six|seven|eight|ten|\d+) months|in (?:a|one|the) year|since 20\d\d|so far|last year|this year|in 20\d\d|in FY ?\d+|in total|total|cumulative|to date|years? of|over the years|year-to-date|ytd)\b")
+# A future, multi-year target ("by 2030", "over the next three years"): an announced plan, shown but never counted.
+PLAN = re.compile(r"(?i)\b(?:by|through|until|before|by the end of|by end of)\s+(?:the\s+)?(?:end\s+of\s+)?(?:fiscal\s+(?:year\s+)?|FY\s?)?(20\d\d)\b|"
+                  r"\b(?:over|in|within|during) the (?:next|coming|following) (?:\w+ )?years\b|\bby the end of the decade\b|\bmulti-?year\b|"
+                  r"\bover (?:two|three|four|five|six|seven|eight|ten|\d+) years\b|\bin (?:two|three|four|five|\d+) years\b")
 # Past tense without an auxiliary usually recaps an earlier round ("Amazon Laid Off 30,000 Workers While ...").
 PAST_RECAP = re.compile(r"(?i)(?<!has )(?<!have )(?<!had )(?<!been )(?<!be )(?<!to )(?<!will )\b(laid off|slashed|eliminated|axed)\s+(?:about |around |roughly |nearly |over |more than )?\d")
 NUM_CUTOFF = re.compile(r"(?i)\b(after|following|on top of|since|having|months after|weeks after|than)\b")
@@ -104,6 +109,7 @@ def clean_company(name):
     """Normalise a raw company string to a display name ('' if it is not a company)."""
     name = re.sub(r"&rsquo;|&#8217;", "’", name or "").strip(" ,.;:-–—'\"“”‘’")
     name = re.sub(r"\s+dba\s+.*$", "", name, flags=re.I)
+    name = re.sub(r"(?i)[\s,(]+(?:updated?|update|amended|revised|corrected|etal|et\.? al\.?)\)?\s*$", "", name)
     name = re.split(r"\s+[-–]\s+", name)[0]  # WARN site suffixes: "Intel Corporation - SC11"
     name = re.sub(r"^\S+-(?:owned|backed|based)\s+", "", name)
     name = re.sub(r"\s*\(.*?\)\s*", " ", name).strip()
@@ -191,6 +197,7 @@ def refine(co, title_case, gazetteer):
 
 
 def parse_count(s):
+    had_sep = "," in s
     s = s.strip().lower().replace(",", "")
     mult = 1
     if s.endswith("k"): mult, s = 1000, s[:-1]
@@ -201,16 +208,28 @@ def parse_count(s):
     except ValueError:
         return None
     v = int(round(v))
-    if v < 3 or v > 500_000 or (1990 <= v <= 2035 and mult == 1 and "." not in s):
+    if v < 3 or v > 500_000 or (1990 <= v <= 2035 and mult == 1 and "." not in s and not had_sep):  # "2,000 jobs" is not a year
         return None
     return v
 
 
-def numbers(text):
+def plan_horizon(text, year=None):
+    """'2030' / 'multi-year' when the headline states a future multi-year target, else None."""
+    m = PLAN.search(text)
+    if not m:
+        return None
+    if m.group(1):
+        return m.group(1) if year and int(m.group(1)) > year else None
+    return "multi-year"
+
+
+def numbers(text, year=None):
     m = NUM_CUTOFF.search(text)
     if m and m.start() > 15:
         text = text[: m.start()]
-    if RETRO.search(text) or PAST_RECAP.search(text):
+    horizon = plan_horizon(text, year)
+    past_year = year and any(int(y) < year for y in re.findall(r"(?<!\d)(20\d\d)(?!\d)", text))
+    if not horizon and (RETRO.search(text) or PAST_RECAP.search(text) or past_year):
         return None, None
     hc = pct = None
     for rx in (RX_COUNT, RX_COUNT2):
@@ -249,8 +268,8 @@ def is_title_case(t):
     return bool(words) and sum(w[0].isupper() for w in words) / len(words) > 0.7
 
 
-def extract_headline(title, text="", gazetteer=None):
-    """Return dict(company, headcount, pct, kind, speculative, country, industry, method) or None."""
+def extract_headline(title, text="", gazetteer=None, year=None):
+    """Return dict(company, headcount, pct, kind, speculative, country, industry, method, horizon) or None."""
     t = re.sub(r"\s+", " ", (title or "").replace(" ", " ")).strip()
     t = re.sub(r"[“”]", '"', t).replace("’", "'")
     if not t or NEGATIVE.search(t) or ROUNDUP.search(t):
@@ -273,29 +292,86 @@ def extract_headline(title, text="", gazetteer=None):
     co = re.sub(r"['’]s$", "", refine(co, is_title_case(t), gazetteer))
     if not valid_company(co, strict=False):
         return None
-    hc, pct = numbers(t)
+    hc, pct = numbers(t, year)
     full = f"{t} {text or ''}"
     kind = "buyout" if BUYOUT.search(t) and not re.search(VERB_STRICT, t) else "layoff"
+    horizon = plan_horizon(t, year)
+    if horizon and (hc or pct) and kind == "layoff":
+        # the deadline must belong to the job number ("cut 35,000 jobs by 2030"), not to another goal in the headline
+        pm = PLAN.search(t)
+        cm = RX_COUNT.search(t) or RX_COUNT2.search(t) or RX_PCT.search(t)
+        if pm and cm and -10 <= pm.start() - cm.end() <= 45:
+            kind = "plan"
+        else:
+            horizon = None
+    if PROTEST.search(t):
+        hc = None  # "500 workers rally against layoffs" counts protesters
     return {
         "company": co, "headcount": hc, "pct": pct, "kind": kind,
         "speculative": bool(SPECULATIVE.search(t)), "country": country_from_text(full),
-        "industry": industry_from_text(full), "method": method,
+        "industry": industry_from_text(full), "method": method, "horizon": horizon if kind == "plan" else None,
     }
 
 
-def claims_from_item(it, gazetteer=None, llm=None):
+EDITION_COUNTRY = {"US": "United States", "GB": "United Kingdom", "IN": "India", "CA": "Canada", "AU": "Australia", "SG": "Singapore"}
+TLD_COUNTRY = {"uk": "United Kingdom", "de": "Germany", "fr": "France", "it": "Italy", "es": "Spain", "nl": "Netherlands",
+               "be": "Belgium", "at": "Austria", "ch": "Switzerland", "se": "Sweden", "no": "Norway", "dk": "Denmark",
+               "fi": "Finland", "pl": "Poland", "cz": "Czechia", "hu": "Hungary", "ro": "Romania", "gr": "Greece",
+               "pt": "Portugal", "ie": "Ireland", "tr": "Turkey", "ru": "Russia", "ua": "Ukraine", "jp": "Japan",
+               "kr": "South Korea", "cn": "China", "tw": "Taiwan", "hk": "Hong Kong", "in": "India", "id": "Indonesia",
+               "my": "Malaysia", "sg": "Singapore", "th": "Thailand", "vn": "Vietnam", "ph": "Philippines", "au": "Australia",
+               "nz": "New Zealand", "za": "South Africa", "ng": "Nigeria", "ke": "Kenya", "eg": "Egypt", "sa": "Saudi Arabia",
+               "ae": "United Arab Emirates", "il": "Israel", "br": "Brazil", "mx": "Mexico", "ar": "Argentina", "cl": "Chile",
+               "co": "Colombia", "pe": "Peru", "ca": "Canada", "pk": "Pakistan", "bd": "Bangladesh", "lu": "Luxembourg"}
+
+
+def source_country(it):
+    """Where the outlet is: its country domain (.de, .co.uk), else the edition's country for non-English stories.
+    An English story on a .com site found through the UK edition says nothing about where the cuts are."""
+    meta = it["meta"]
+    host = (meta.get("publisher_url") or meta.get("domain") or "").lower()
+    host = re.sub(r"^https?://", "", host).split("/")[0]
+    tld = host.rsplit(".", 1)[-1] if "." in host else ""
+    if tld in TLD_COUNTRY:
+        return TLD_COUNTRY[tld]
+    if meta.get("lang") and meta["lang"] != "en":
+        return meta.get("src_country")
+    if it["source"] == "gdelt" and meta.get("src_country") and meta.get("lang") not in (None, "en"):
+        return meta["src_country"]
+    return None
+
+
+def item_lang(it):
+    meta = it["meta"]
+    if meta.get("lang"):
+        return meta["lang"]
+    return "en"
+
+
+def claims_from_item(it, gazetteer=None, llm=None, intl_gaz=None):
     """Turn a stored item row (dict with parsed meta) into a claim dict or None."""
     meta = it["meta"]
     w = TIER_WEIGHT[it["tier"]]
+    lang = item_lang(it)
+    year = int(it["published"][:4]) if it.get("published") else None
+    src_cty = source_country(it)
     if it["tier"] == "official":
-        co = clean_company(meta.get("company", ""))
+        co = clean_company(meta.get("company") or "")
         if not co:
             return None
+        if lang in ("ja", "zh", "ko"):
+            from .intl import SCRIPT_NAMES
+            co = SCRIPT_NAMES.get(co, co)
         return {"company": co, "headcount": meta.get("headcount"), "pct": meta.get("pct"), "kind": meta.get("kind", "layoff"),
                 "date": it["published"], "country": meta.get("country"), "location": meta.get("location"),
-                "industry": meta.get("industry"), "weight": w, "speculative": 0, "method": it["source"]}
-    ex = extract_headline(it["title"], it.get("text", ""), gazetteer)
-    if not ex and llm and KEYWORD.search(it["title"] or ""):
+                "industry": meta.get("industry"), "weight": w, "speculative": 0, "method": it["source"],
+                "horizon": None, "lang": lang, "src_country": meta.get("country")}
+    if lang == "en":
+        ex = extract_headline(it["title"], it.get("text", ""), gazetteer, year)
+    else:
+        from .intl import extract as intl_extract
+        ex = intl_extract(it["title"], lang, intl_gaz, year)
+    if not ex and llm and (KEYWORD.search(it["title"] or "") or lang != "en"):
         ex = llm(it["title"], it.get("text", ""))
     if not ex:
         return None
@@ -303,4 +379,5 @@ def claims_from_item(it, gazetteer=None, llm=None):
         w *= 0.6
     return {"company": ex["company"], "headcount": ex.get("headcount"), "pct": ex.get("pct"), "kind": ex.get("kind", "layoff"),
             "date": it["published"], "country": ex.get("country"), "location": None, "industry": ex.get("industry"),
-            "weight": round(w, 3), "speculative": int(bool(ex.get("speculative"))), "method": ex.get("method", "llm")}
+            "weight": round(w, 3), "speculative": int(bool(ex.get("speculative"))), "method": ex.get("method", "llm"),
+            "horizon": ex.get("horizon"), "lang": lang, "src_country": src_cty}
