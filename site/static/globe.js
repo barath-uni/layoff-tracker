@@ -146,7 +146,7 @@
       cx = W / 2; cy = (top + bot) / 2; R = Math.max(80, Math.min(W * 0.45, (bot - top) * 0.5));
     } else {
       var fl = $("[data-feed]").getBoundingClientRect().left, aw = fl - 20;
-      cx = aw * 0.53; cy = (H - 70) / 2 + 8; R = Math.max(120, 0.46 * Math.min(aw * 0.95, H - 96));
+      cx = aw * 0.56; cy = (H - 70) / 2 + 8; R = Math.max(120, 0.46 * Math.min(aw * 0.95, H - 96));
     }
     gradCache = null; setRot();
     drawSpark();

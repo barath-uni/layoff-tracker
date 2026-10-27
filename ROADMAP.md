@@ -20,6 +20,20 @@
 - Dive deeper: table preview by company, sector and country, first rows free, the rest blurred behind an email-only sign-up; an "Early warning" tab of WARN notices not yet effective (the paid-product teaser)
 - Sign-up through a Cloudflare Pages Function (D1 or KV), honeypot and rate limit; own counts of panel opens, gate views and sign-ups, no third-party analytics
 
+## V4: single-screen globe (branch ui-redesign)
+- Home is one screen (100dvh, no page scroll); everything floats over the globe on glass panels; charts moved to /insights
+- Custom globe: dot-matrix "night earth", company favicon pins with recency rings, WARN badge, pulse rings, label chips ("Meta −3,600 · 2d")
+- Live counter + deadpan line, live feed (new items slide in), pin card, Dive-deeper drawer with designed rows and the blurred email unlock
+- Replay of the year in ~20 s with a weekly-histogram scrubber; the camera follows the biggest layoffs; `/?replay` autoplays
+- Brand: Layoff Tracker
+
+## Globe extras (cut for launch, next)
+- "People" particles drifting off fresh pins, scaled by log(headcount)
+- Country glow from the last 30 days (and a trailing 30-day glow during Replay)
+- City clustering with a count bubble when pins pile up; a denser dot lattice at high zoom
+- A recording mode for Replay (hide panels, 9:16 framing, brand watermark) and a "download clip" export
+- Self-hosted logo sprites at build time (no third-party favicon requests), more curated domains
+
 ## Deliberately out (for now)
 | Item | Why not yet |
 |---|---|

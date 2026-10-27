@@ -90,7 +90,6 @@ button{font:inherit;color:inherit}
 .fi-bar{grid-column:3;justify-self:end;width:56px}
 li.enter > .fi{animation:slidein .7s var(--ease) both}
 @keyframes slidein{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
-li.enter > .fi::after{content:"";position:absolute}
 .pbar{display:block;height:4px;border-radius:2px;background:var(--line);overflow:hidden;position:relative}
 .pbar i{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:var(--ink-2);min-width:2px}
 .pbar.hot i{background:var(--accent)}
@@ -127,7 +126,7 @@ li.enter > .fi::after{content:"";position:absolute}
 .zoom button:hover{background:var(--hover);color:var(--ink)}
 
 /* ---------------------------------------------------------------- pin card */
-.card{position:fixed;z-index:8;width:328px;padding:16px;background:var(--glass-2);transform-origin:left center}
+.card{position:fixed;z-index:8;width:328px;max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain;padding:16px;background:var(--glass-2);transform-origin:left center}
 .card:not([hidden]){animation:pop .28s var(--ease)}
 @keyframes pop{from{opacity:0;transform:scale(.96) translateY(4px)}to{opacity:1;transform:none}}
 .card[hidden]{display:none}
