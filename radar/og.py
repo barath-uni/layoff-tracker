@@ -42,9 +42,9 @@ def ellipsize(text, f, max_w):
 
 
 def brand(draw, x, y):
-    draw.arc((x, y, x + 34, y + 34), 200, 340, fill=INK2, width=3)
-    draw.arc((x + 7, y + 7, x + 27, y + 27), 200, 340, fill=INK2, width=3)
-    draw.ellipse((x + 13, y + 13, x + 21, y + 21), fill=ACCENT)
+    pts = [(x, y + 19), (x + 8, y + 19), (x + 12, y + 7), (x + 19, y + 31), (x + 23, y + 17), (x + 27, y + 17)]
+    draw.line(pts, fill=INK2, width=3, joint="curve")
+    draw.ellipse((x + 26, y + 12, x + 36, y + 22), fill=ACCENT)
     draw.text((x + 46, y + 2), BRAND, font=font(600, 28), fill=INK)
 
 
