@@ -24,14 +24,15 @@ RX_B = re.compile(rf"(?i:layoffs?|job\s+cuts|redundancies|cuts)\s+(?:(?i:announc
 RX_E = re.compile(rf"(?P<num>\d{{1,3}}(?:,\d{{3}})+|\d+)\s+(?:\w+\s+){{0,2}}?{JOBNOUN}\s+(?i:to\s+be\s+)?(?i:cut|laid\s+off|lose\s+(?:their\s+)?jobs|axed|eliminated)\s+(?i:at|by)\s+{NAME}")
 
 NUM = r"(?P<n>\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?\s*(?:[kK]|thousand|million)?|\d+)"
-RX_COUNT = re.compile(rf"(?<![$€£\d.,])(?:(?i:about|around|roughly|nearly|almost|approximately|some|over|more\s+than|up\s+to|at\s+least|another|an?\s+additional)\s+)?{NUM}\s+(?:(?:more|additional|corporate|tech|office|full-time|global|white-collar|local|union|U\.S\.|US|UK|India|salaried|hourly|remote|plant|factory|retail|warehouse|store|frontline|[A-Z]\w+)\s+){{0,2}}{JOBNOUN}")
+COUNTNOUN = r"(?i:jobs?|employees?|workers?|staff(?:ers)?|positions?|roles?|people|layoffs?|personnel|engineers?|redundanc(?:y|ies)|nurses?|managers?)"
+RX_COUNT = re.compile(rf"(?<![$€£\d.,])(?:(?i:about|around|roughly|nearly|almost|approximately|some|over|more\s+than|up\s+to|at\s+least|another|an?\s+additional)\s+)?{NUM}\s+(?:(?:more|additional|corporate|tech|office|full-time|global|white-collar|local|union|U\.S\.|US|UK|India|salaried|hourly|remote|plant|factory|retail|warehouse|store|frontline|non-union|[A-Z]\w+)\s+){{0,2}}{COUNTNOUN}")
 RX_COUNT2 = re.compile(rf"(?<![$€£\d.,]){NUM}\s+(?i:laid\s+off|layoffs|job\s+cuts|jobs\s+cut|jobs\s+lost)")
 RX_PCT = re.compile(r"(\d+(?:\.\d+)?)\s*(?:%|percent|per\s+cent)\s+of\s+(?:its\s+|the\s+|their\s+|our\s+|global\s+|total\s+|corporate\s+|overall\s+)*(?:workforce|staff|employees|jobs|headcount|work\s+force|employee\s+base|team)", re.I)
 
 KEYWORD = re.compile(r"(?i)lay(?:s|ing)?\s*off|laid off|layoff|job cuts|cut(?:s|ting)? .{0,30}(jobs|workforce|staff|employees|workers|positions|roles)|redundanc|workforce reduction|eliminat\w+ .{0,25}(jobs|positions|roles)|slash\w* .{0,20}(jobs|workforce|staff)|shed\w* .{0,20}jobs|axe\w* .{0,20}jobs|furlough")
 ROUNDUP = re.compile(r"(?i)\b(tracking|tracker|list of|these companies|companies (?:that|which|cutting|laying)|and others|roundup|so far this year|all the (?:job|layoff)|biggest layoffs of|every company|here are|here's who|which companies|layoffs? this week|week in layoffs|hit this week|in history)\b")
 NEGATIVE = re.compile(r"(?i)\b(block layoffs|blocks layoffs|no layoffs|without layoffs|rules? out|denies|won't lay|will not lay|avoid(?:s|ed)? layoffs|not planning|reverses?|rehir\w+|hiring spree|lawsuit|sued|sues|settlement)\b")
-SPECULATIVE = re.compile(r"(?i)\b(reportedly|report says|sources say|sources said|considering|weighs|weighing|mulls|could|may|might|rumou?r|according to (?:a )?report|plans|planning|eyes|expected to)\b|\?|: report$")
+SPECULATIVE = re.compile(r"(?i)\b(reportedly|report says|sources say|sources said|considering|weighs|weighing|mulls|could|may|might|rumou?r|according to (?:a )?report|eyes|looming|soon)\b|\?|[:\-–] report$")
 # Numbers that describe the past or a multi-year target, not this event.
 RETRO = re.compile(r"(?i)\b(in (?:the )?(?:past|last) (?:\w+ )?(?:years?|months?)|over (?:the )?(?:past|last)|in (?:two|three|four|five|six|seven|eight|ten|\d+) (?:years|months)|in (?:a|one|the) year|since 20\d\d|so far|last year|this year|in 20\d\d|in FY ?\d+|by (?:end of |the end of )?20\d\d|over (?:\w+ )?years|in total|total|cumulative|to date|years? of|over the years|end of (?:the )?decade|over the next (?:\w+ )?years|year-to-date|ytd)\b")
 # Past tense without an auxiliary usually recaps an earlier round ("Amazon Laid Off 30,000 Workers While ...").
@@ -59,7 +60,7 @@ california texas florida ohio michigan york washington india china japan germany
 america american british indian german french chinese japanese canadian australian european global international
 economy economic market labor labour employment unemployment manufacturing manufacturers factories factory plants plant
 software hardware cloud cybersecurity fintech crypto healthcare pharma biotech banking insurance energy oil gas telecom
-u.s u.s. u.k u.k. newspaper newspapers publishers studios streaming hollywood mortgage xbox gaming contractors contractor district
+time times plans stock what know depot hospice journalism engineers small fresh sweeping from u.s u.s. u.k u.k. newspaper newspapers publishers studios streaming hollywood mortgage xbox gaming contractors contractor district
 """.split())
 NEVER_START = set("""why how what when where who as after amid inside tracking fearing exclusive breaking update watch live opinion
 analysis explainer podcast here these those this some many more most nearly about over hundreds thousands dozens if once
@@ -115,7 +116,7 @@ def clean_company(name):
         if toks[0].lower() in NATIONALITY and (toks[1].lower() not in DESCRIPTOR or toks[1].lower() in NATIONALITY):
             break  # "American Express" stays; "German automaker VW" -> "VW"
         toks.pop(0)
-    while len(toks) > 1 and toks[-1].lower() in TRAIL_PLACE:
+    while len(toks) > 1 and toks[-1].lower() in TRAIL_PLACE | {"stock", "shares", "ceo"}:
         toks.pop()
     while len(toks) > 1 and toks[-1].lower() in ("layoffs", "layoff", "jobs", "cuts", "workers", "employees", "staff"):
         toks.pop()
@@ -161,15 +162,27 @@ def valid_company(name, strict=True):
     return True
 
 
+PRODUCT_SEP = {"developer", "dev", "studio", "maker", "publisher", "owner", "parent", "operator", "creator", "firm"}
+
+
 def refine(co, title_case, gazetteer):
-    """Trim over-captured names: longest known prefix first, then break words in Title Case headlines."""
+    """Trim over-captured names: product->company ("Ghost of Yotei Dev Sucker Punch" -> "Sucker Punch"),
+    then the longest known prefix or suffix, then break words in Title Case headlines."""
     toks = co.split()
+    for i, t in enumerate(toks[1:], 1):
+        if t.lower().strip(".'’") in PRODUCT_SEP and i + 1 < len(toks) and toks[i + 1][:1].isupper():
+            toks = toks[i + 1:]
+            break
+    co = " ".join(toks)
     if len(toks) == 1:
         return co
     if gazetteer:
         for i in range(len(toks), 0, -1):
             if canonical_slug(" ".join(toks[:i])) in gazetteer:
                 return " ".join(toks[:i])
+        for i in range(1, len(toks)):
+            if canonical_slug(" ".join(toks[i:])) in gazetteer and len(" ".join(toks[i:])) > 3:
+                return " ".join(toks[i:])
     if title_case:
         for i, t in enumerate(toks[1:], 1):
             if t.lower().strip("'’") in BREAK:

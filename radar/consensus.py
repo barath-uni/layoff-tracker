@@ -108,8 +108,7 @@ def _headcount(cl):
     news = [(c["headcount"], c["weight"], c["speculative"]) for c in cl
             if c["tier"] != "official" and c["headcount"] and c["kind"] != "buyout"
             and not any(abs(c["headcount"] - b) <= 0.05 * b for b in buyouts)]
-    if any(not s for _, _, s in news):
-        news = [x for x in news if not x[2]]  # firm reports beat speculation
+    news = [x for x in news if not x[2]]  # rumours and hypotheticals never set the number
     news = [(v, w) for v, w, _ in news]
     if len(news) >= 3:
         med = weighted_median(news)
@@ -188,9 +187,64 @@ def _dedupe_company(clusters):
             if c["tier"] != "official" and c["headcount"] and any(
                     abs(c["headcount"] - v) <= 0.1 * v and 0 < (d(c["date"]) - dt).days <= 365 for v, dt in seen):
                 c["headcount"], c["repeat"] = None, 1
+        # Earlier number-less news coverage (rumours, "plans cuts") becomes part of the confirmed event.
+        while out and not any(c["headcount"] or c["pct"] or c["tier"] == "official" for c in out[-1]) \
+                and any(c["headcount"] for c in cl) and (d(cl[0]["date"]) - d(out[-1][-1]["date"])).days <= 90:
+            cl = out.pop() + cl
         out.append(cl)
         seen += nums(cl)
     return out
+
+
+def _norm(t):
+    return " " + re.sub(r"[^a-z0-9&]+", " ", (t or "").lower().replace("’", "'").replace("'s ", " ")) + " "
+
+
+def resolve_entities(rows):
+    """Merge entity A into B when most of A's headlines also name B, B is the bigger story, and the
+    dates overlap. Catches products, units and people extracted as companies
+    ("Ghost of Yotei" -> Sucker Punch, "Xbox" -> Microsoft, "Jack Dorsey" -> Block)."""
+    from .extract import STOP_SINGLE
+    by = defaultdict(list)
+    for r in rows:
+        by[r["slug"]].append(r)
+    size = {k: len(v) for k, v in by.items()}
+    names = {}
+    for k, v in by.items():
+        n = Counter(c["company"] for c in v).most_common(1)[0][0]
+        if len(n) >= 3 and n.lower() not in STOP_SINGLE:
+            names[k] = _norm(n)
+    dates = {k: sorted(d(c["date"]) for c in v) for k, v in by.items()}
+    remap = {}
+    for a, claims in by.items():
+        titles = [_norm(c["title"]) for c in claims if c["tier"] != "official"]
+        na = names.get(a)
+        if not titles or not na or a in KNOWN or any(c["tier"] == "official" for c in claims):
+            continue
+        best, best_share = None, 0.0
+        for b, nb in names.items():
+            if b == a or size[b] < max(3, size[a]) or nb == na:
+                continue
+
+            def near(t):  # B named right next to A ("Ghost of Yotei developer Sucker Punch", "Microsoft Xbox")
+                i, j = t.find(na), t.find(nb)
+                if i < 0 or j < 0:
+                    return False
+                gap = t[min(i + len(na), j + len(nb)):max(i, j)] if i != j else ""
+                return (j >= i and j < i + len(na)) or (i >= j and i < j + len(nb)) or len(gap.split()) <= 2
+            share = sum(1 for t in titles if near(t)) / len(titles)
+            if share > best_share:
+                best, best_share = b, share
+        if best and best_share >= 0.5:
+            near = any(abs((x - y).days) <= 14 for x in dates[a] for y in dates[best][:400])
+            if near:
+                remap[a] = best
+    for a in list(remap):  # follow chains a -> b -> c
+        seen = {a}
+        while remap[a] in remap and remap[a] not in seen:
+            seen.add(remap[a])
+            remap[a] = remap[remap[a]]
+    return remap
 
 
 def build_events(con):
@@ -200,8 +254,10 @@ def build_events(con):
         # An 8-K Item 2.05 is an exit/disposal filing; it only counts as a layoff record when it mentions people.
         if r["source"] == "edgar" and not (r["headcount"] or r["pct"] or WORKFORCE.search(r["text"] or "")):
             r["tier"], r["weight"] = "filing-nonworkforce", 0.0
+    remap = resolve_entities(rows)
     by_slug = defaultdict(list)
     for r in rows:
+        r["slug"] = remap.get(r["slug"], r["slug"])
         by_slug[r["slug"]].append(r)
     con.execute("DELETE FROM events")
     con.execute("DELETE FROM event_claims")
