@@ -1,6 +1,6 @@
-# layoff-radar
+# Layoff Tracker
 
-A public layoff tracker built on mined data only. The front page is a live stage (globe/map, ticking counter, "right now" feed) made to be screenshotted and shared. It pulls SEC filings, six US states' WARN notices, Japan's TDnet and India's NSE disclosures, and news from 55 Google News country editions in 29 languages (plus GDELT when it is reachable), merges reports into events, and assigns each event a consensus headcount and a confidence score. Every number links to its sources. The site is fully static.
+A public layoff tracker built on mined data only. The front page is a single-screen app (no page scroll): a dot-matrix globe with company-logo pins, a ticking counter, a live feed and a "Replay", made to be screenshotted, screen-recorded and shared. It pulls SEC filings, US WARN notices, Japan's TDnet and India's NSE disclosures, and news from Google News country editions in local languages, merges reports into events, and assigns each event a consensus headcount and a confidence score. Every number links to its sources. The site is fully static.
 
 ## Run
 
@@ -23,9 +23,9 @@ Requirements: Python 3.11+ and Pillow (for share cards). Everything else is stdl
 | `LR_CONTACT` | Contact email in the SEC User-Agent (SEC asks for one). |
 | `LR_LLM_CMD` | Optional extractor command (JSON in on stdin, JSON out). Off by default; see `radar/llm.py`. |
 | `LR_TODAY` | Pin "today" (YYYY-MM-DD) for reproducible builds. |
-| `LR_BRAND` | Product name shown everywhere (default `layoff-radar`, a placeholder). |
+| `LR_BRAND` | Product name shown everywhere, share cards included (default `Layoff Tracker`). |
 | `LR_BACKFILL` | `1` re-scan the whole window of news, `0` recent only, `auto` (default): first run of each source and 03:00 UTC daily. |
-| `LR_SINCE` | Start of the fetch window (default Jan 1 of the current year). `LR_SINCE=2025-01-01` backfills two years; the site still reports the current year. |
+| `LR_SINCE` | Start of the fetch and reporting window (default: today minus 92 days, i.e. the last 3 months). |
 
 ## Layout
 
@@ -38,8 +38,10 @@ Requirements: Python 3.11+ and Pillow (for share cards). Everything else is stdl
 - `radar/build.py`, `radar/og.py`: static site, 1200×630 share cards and 1080×1920 stories
 - `radar/places.py`: curated HQ cities and employee totals (for "% of staff"), Nominatim geocoding with a DB cache
 - `radar/config.py`: brand name and site URL
-- `site/static/globe.js`: front-page globe/map (d3-geo on canvas, vendored): zoom (wheel, pinch, +/−), pan/rotate, labels at higher zoom, the click panel, live counter and feed
-- `site/static/gate.js`: "Dive deeper" table preview, the blurred rows and the email-only sign-up (soft gate, unlocks client-side)
+- `site/static/globe.js` + `home.css`: the home app. Dot-matrix globe (canvas 2D, d3-geo vendored) with favicon logo pins, pulse rings and label chips; inertia drag, wheel/pinch zoom; live counter; live feed (bottom sheet on phones); pin card; "Replay" scrubber (the year in 20 s; `/?replay` autoplays for screen recordings)
+- `site/static/gate.js`: "Dive deeper" drawer (sheet on phones): designed rows, first rows clear, the rest blurred behind an email-only unlock (soft gate, unlocks client-side)
+- `radar/logos.py`: curated company domains (favicon pins; monogram fallback) and country ISO codes (flags)
+- `/insights/`: the charts, breakdowns and filterable event list that used to sit under the home stage
 - `functions/api/[[route]].js`: Cloudflare Pages Function for `/api/signup`, `/api/event` and `/api/stats` (D1 or KV)
 - `site/static/`: CSS, JS, fonts. `research/notes.md`: competitor and source research; `research/sources-by-country.md`: coverage per country; `research/scale.md`: run costs and the full-coverage extrapolation
 - `data/` (gitignored): SQLite DB and HTTP cache. `dist/` (gitignored): build output
@@ -61,7 +63,7 @@ The first run on an empty cache re-scans the whole year of news and geocodes pla
 
 ## Sign-up gate (a demand test, not a paywall)
 
-Flow: click a dot → panel (company, people, % of staff, date, confidence, sources) → **Dive deeper** → table with the first 3–4 rows clear and the rest blurred, plus an "Early warning" tab (WARN notices filed but not yet effective) → email-only form → the full table unlocks in that browser (`localStorage`). The data itself stays public in `/data.json`; this only measures demand.
+Flow: click a pin or a feed row → card (company, people, % of staff, date, confidence, sources) → **Dive deeper** → drawer with the first 3–4 rows clear and the rest blurred, plus an "Early warning" tab (WARN notices filed but not yet effective) → email-only form → the full table unlocks in that browser (`localStorage`). The data itself stays public in `/data.json`; this only measures demand.
 
 Endpoints (same routes locally and on Cloudflare):
 

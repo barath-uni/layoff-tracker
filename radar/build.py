@@ -12,6 +12,7 @@ from urllib.parse import quote
 
 from . import og
 from .db import connect
+from .logos import domain, iso
 from .places import HQ, WORKFORCE, geocode
 from .ref import TIER_LABEL, US_STATE_CODES
 from .util import DATA, DIST, SITE, TODAY, YEAR_START, slugify
@@ -216,12 +217,11 @@ ICON = {
     "share": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M16 6l-4-4-4 4M12 2v13"/></svg>',
     "theme": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg>',
 }
-LOGO = ('<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 15a9 9 0 0 1 17 0" fill="none" '
-        'stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".45"/><path d="M7.5 15a5 5 0 0 1 9 0" fill="none" '
-        'stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".7"/><circle cx="12" cy="15" r="2.4" fill="var(--accent)"/></svg>')
+LOGO = ('<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 13H6l2.6-6.5 4.2 12 2.6-6.5H18" fill="none" '
+        'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.6" cy="12" r="2.4" fill="#ff4d4a"/></svg>')
 FAVICON = ("data:image/svg+xml," + quote('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" '
-           'fill="#0d0d0d"/><path d="M4.5 16a8 8 0 0 1 15 0" fill="none" stroke="#f0efec" stroke-width="2" stroke-linecap="round"/>'
-           '<circle cx="12" cy="16" r="2.6" fill="#e66767"/></svg>'))
+           'fill="#05060a"/><path d="M3 13h3l2.2-5.5 3.6 10 2.2-5.5H16" fill="none" stroke="#eef0f4" stroke-width="2" stroke-linecap="round" '
+           'stroke-linejoin="round"/><circle cx="19" cy="12" r="2.3" fill="#ff4d4a"/></svg>'))
 
 
 def share_buttons(url, text, card=None, label_x="Post on X"):
@@ -338,9 +338,7 @@ def weekly_chart(weekly, week_top):
 def page(path, title, desc, body, og_img="/og/home.png", page_class="", wrap=True):
     url = SITE_URL + path
     img = SITE_URL + og_img
-    extra_js = ("<script src=\"/static/vendor/d3-array.min.js\" defer></script><script src=\"/static/vendor/d3-geo.min.js\" defer></script>"
-                "<script src=\"/static/vendor/topojson-client.min.js\" defer></script><script src=\"/static/globe.js\" defer></script><script src=\"/static/gate.js\" defer></script>"
-                if page_class == "home" else "")
+    extra_js = ""
     return f"""<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -362,7 +360,7 @@ def page(path, title, desc, body, og_img="/og/home.png", page_class="", wrap=Tru
 </head><body class="{page_class}">
 <div class="bar"><header class="wrap top">
   <a class="brand" href="/">{LOGO}<span>{NAME}</span></a>
-  <nav class="nav"><a href="/companies/">Companies</a><a class="hide-sm" href="/methodology/">Methodology</a>
+  <nav class="nav"><a href="/">Globe</a><a href="/insights/">Insights</a><a href="/companies/">Companies</a><a class="hide-sm" href="/methodology/">Methodology</a>
   <button class="icon-btn" type="button" data-theme-toggle aria-label="Toggle dark mode">{ICON["theme"]}</button></nav>
 </header></div>
 <main{' class="wrap"' if wrap else ''}>{body}</main>
@@ -378,16 +376,6 @@ def ago(d_iso):
     return "today" if days <= 0 else "yesterday" if days == 1 else f"{days} days ago" if days < 14 else short_date(d_iso)
 
 
-def rightnow_items(evs, n=4):
-    out = []
-    for x in [x for x in evs if x["headcount"] or x["pct_show"]][:n]:
-        num = f'{fmt(x["headcount"])} jobs' if x["headcount"] else f'{x["pct_show"]} of staff'
-        extra = f' · {x["pct_show"]} of staff' if x["headcount"] and x["pct_show"] else ""
-        out.append(f'<li><a href="/company/{e(x["slug"])}/"><b>{e(x["company"])}</b><span>{num}{e(extra)}</span>'
-                   f'<time datetime="{x["start"]}">{ago(x["start"])}</time></a></li>')
-    return "".join(out)
-
-
 def week_stats(evs):
     since = (TODAY - timedelta(days=7)).isoformat()
     wk = [x for x in evs if x["start"] >= since]
@@ -399,19 +387,129 @@ def week_stats(evs):
     return people, len({x["slug"] for x in wk}), top
 
 
+def slim_events(evs, lean=False):
+    """Event rows for the front-end. lean (home): no headline, and long redirect URLs dropped (the card links to the company page)."""
+    def src(r):
+        return [r["publisher"], r["url"]] if not lean or len(r["url"] or "") <= 160 else [r["publisher"]]
+    return [{"s": x["slug"], "c": x["company"], "d": x["start"], "n": x["headcount"], "lo": x["low"], "hi": x["high"],
+             "p": x["pct"], "ps": x["pct_show"], "pn": x["pct_note"], "l": x["label"], "cf": x["confidence"],
+             "i": x["industry"], "k": x["country"], "np": x["n_publishers"],
+             "la": x["lat"], "lo2": x["lon"], "dm": domain(x["slug"]), "cc": iso(x["country"]),
+             "pc": 1 if x.get("place") and x.get("place") == x["country"] else 0, "pl": x.get("plan_n"), "hz": x.get("horizon"),
+             "src": [src(r) for r in x["sources"][:3]]} | ({} if lean else {"h": x["headline"]}) for x in evs]
+
+
+def json_script(id_, obj):
+    return f'<script type="application/json" id="{id_}">{json.dumps(obj, separators=(",", ":")).replace("</", "<\\/")}</script>'
+
+
+def flag(cc):
+    return "".join(chr(0x1F1E6 + ord(ch) - 65) for ch in cc) if cc and len(cc) == 2 else ""
+
+
+def app_page(title, desc, body):
+    """The single-screen home: no header, no footer, no page scroll. Everything floats over the globe."""
+    url, img = SITE_URL + "/", SITE_URL + "/og/home.png"
+    return f"""<!doctype html>
+<html lang="en" class="app"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{e(title)}</title>
+<meta name="description" content="{e(desc)}">
+<link rel="canonical" href="{e(url)}">
+<meta property="og:type" content="website"><meta property="og:site_name" content="{NAME}">
+<meta property="og:title" content="{e(title)}"><meta property="og:description" content="{e(desc)}">
+<meta property="og:url" content="{e(url)}"><meta property="og:image" content="{e(img)}">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{e(title)}">
+<meta name="twitter:description" content="{e(desc)}"><meta name="twitter:image" content="{e(img)}">
+<meta name="theme-color" content="#06070a">
+<link rel="icon" href="{FAVICON}">
+<link rel="preload" href="/static/fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/home.css">
+</head><body>
+{body}
+<script src="/static/vendor/d3-array.min.js" defer></script><script src="/static/vendor/d3-geo.min.js" defer></script>
+<script src="/static/vendor/topojson-client.min.js" defer></script><script src="/static/globe.js" defer></script><script src="/static/gate.js" defer></script>
+</body></html>"""
+
+
 def home(evs, s, updated, industries, countries):
     url = SITE_URL + "/"
     y = YEAR_START.year
     pace_h = s["d30"] / (30 * 24)
     every = round(3600 / pace_h) if pace_h else 0
-    wk_people, wk_cos, wk_top = week_stats(evs)
+    wk_people, wk_cos, _ = week_stats(evs)
     share_text = f"{fmt(s['ytd'])} people laid off in {y}. So far. Every number sourced:"
+    xu = f"https://x.com/intent/post?text={quote(share_text)}&url={quote(url)}"
+    d30 = (TODAY - timedelta(days=30)).isoformat()
+    by_c = defaultdict(int)
+    for x in evs:
+        if x["start"] >= d30 and x["headcount"] and x["country"] not in ("Unknown",) and "multi" not in x["country"]:
+            by_c[x["country"]] += x["headcount"]
+    chips = "".join(f'<span class="chip"><span class="fl" aria-hidden="true">{flag(iso(k))}</span>{e(k)}<b>{compact(v)}</b></span>'
+                    for k, v in sorted(by_c.items(), key=lambda r: -r[1])[:3])
+    on_map = sum(1 for x in evs if x["lat"] is not None)
+    iso_t = updated.isoformat()
+    skel = '<li class="sk"><i></i><span><i></i><i></i></span></li>' * 7
+    body = f"""<canvas class="globe" data-globe role="img" aria-label="Globe of {on_map} layoff events in {y}. Drag to rotate, pinch or scroll to zoom."></canvas>
+<div class="vignette" aria-hidden="true"></div>
+<header class="hud glass" data-hud>
+  <div class="hud-top">
+    <a class="brand" href="/">{LOGO}<span>{NAME}</span></a>
+    <span class="live-pill"><span class="live-dot" aria-hidden="true"></span><span data-ago data-updated="{iso_t}">Live</span></span>
+  </div>
+  <div class="count-wrap">
+    <div class="count" data-ticker data-base="{s['ytd']}" data-updated="{iso_t}" data-pace="{pace_h / 3600:.6f}">{fmt(s['ytd'])}</div>
+    <p class="kicker"><span data-kicker>people laid off in {y}.</span> <em data-kicker2>So far.</em></p>
+  </div>
+  <p class="deadpan" data-deadpan data-every="{every}" data-week="{wk_people}" data-cos="{wk_cos}">At this pace, someone loses their job every {every} seconds.</p>
+  <div class="hud-more">
+    <div class="chips" aria-label="Most people laid off, last 30 days"><span class="chips-k">30d</span>{chips}</div>
+    <div class="hud-actions">
+      <a class="ib" href="{e(xu)}" target="_blank" rel="noopener" aria-label="Post on X">{ICON["x"]}</a>
+      <button class="ib" type="button" data-copy="{e(url)}" aria-label="Copy link">{ICON["link"]}</button>
+      <a class="ib" href="/og/home.png" download aria-label="Download share card">{ICON["img"]}</a>
+      <a class="ib txt" href="/og/story-home.png" download>Story</a>
+      <a class="ib txt" href="/methodology/" title="The counter climbs at the last 30 days' pace and resets to verified data every hour">How we count</a>
+    </div>
+  </div>
+</header>
+<nav class="topnav glass" aria-label="Pages"><a href="/insights/">Insights</a><a href="/companies/">Companies</a><a href="/methodology/">Method</a></nav>
+<aside class="feed glass" data-feed aria-label="Latest layoffs">
+  <button class="feed-handle" type="button" data-sheet aria-label="Expand the feed"><i></i></button>
+  <div class="feed-head">
+    <div><span class="live-dot" aria-hidden="true"></span><b>Live</b><span class="feed-sub">{s['events30']} layoffs · {compact(s['d30'])} people in 30 days</span></div>
+  </div>
+  <ol class="feed-list" data-feed-list>{skel}</ol>
+  <div class="feed-foot"><a href="/insights/">Charts and breakdowns →</a><a href="/companies/">All {len(s['companies_list'])} companies</a></div>
+</aside>
+<div class="replay glass" data-replay>
+  <button class="rp-play" type="button" data-play aria-label="Replay {y}"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path class="i-play" d="M7 4.5v15l13-7.5z" fill="currentColor"/><path class="i-pause" d="M6 4h4v16H6zM14 4h4v16h-4z" fill="currentColor"/></svg></button>
+  <div class="rp-label"><b data-rp-title>Replay {y}</b><span data-rp-date>Jan 1 → today, in 20 s</span></div>
+  <div class="rp-track" data-track role="slider" tabindex="0" aria-label="Replay position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><canvas data-spark></canvas><span class="rp-head" data-head></span></div>
+</div>
+<div class="zoom glass" role="group" aria-label="Zoom"><button type="button" data-zoom="in" aria-label="Zoom in">+</button><button type="button" data-zoom="out" aria-label="Zoom out">−</button></div>
+<div class="card glass" data-card hidden role="dialog" aria-label="Layoff details"></div>
+<div class="drawer" data-dive hidden><div class="drawer-in" role="dialog" aria-modal="true" aria-labelledby="dive-title" tabindex="-1"></div></div>
+<div class="toast" role="status" aria-live="polite"></div>
+<noscript><p class="nojs">This globe needs JavaScript. <a href="/insights/">See the charts and the full list instead</a>.</p></noscript>
+{json_script("events", slim_events(evs, lean=True))}
+{json_script("warn", early_warnings(evs))}
+{json_script("weekly", {"w": s["weekly"], "y0": (YEAR_START - timedelta(days=YEAR_START.weekday())).isoformat(), "today": TODAY.isoformat(), "y": y})}"""
+    title = f"{fmt(s['ytd'])} people laid off in {y}: {NAME}"
+    desc = f"{fmt(s['ytd'])} people laid off in {y} so far, live on a globe. Every number links to its sources."
+    return app_page(title, desc, body)
+
+
+def insights_page(evs, s, industries, countries):
+    y = YEAR_START.year
+    wk_people, wk_cos, _ = week_stats(evs)
     delta = s["d30"] - s["prev30"]
     dtxt = (f'{"+" if delta >= 0 else "−"}{compact(abs(delta))} vs prior 30 days') if s["prev30"] else ""
     tiles = [
+        (f"Laid off in {y}", fmt(s["ytd"]), f"at {fmt(s['companies'])} companies", "/stat/ytd/"),
         ("Last 30 days", fmt(s["d30"]), dtxt or "people", "/stat/30d/"),
         ("This week", fmt(wk_people), f"people at {wk_cos} companies", "/stat/week/"),
-        ("Layoff events", fmt(s["events"]), f'{s["events30"]} in the last 30 days', "/stat/events/"),
         ("Official or corroborated", f'{s["official_share"]}%', "of tracked headcount", "/methodology/"),
     ]
     tiles_html = "".join(
@@ -422,38 +520,11 @@ def home(evs, s, updated, industries, countries):
     feed = "".join(feed_row(x) for x in evs[:30])
     opts_i = "".join(f'<option>{e(n)}</option>' for n, _, _ in industries)
     opts_c = "".join(f'<option>{e(n)}</option>' for n, _, _ in countries)
-    slim = [{"s": x["slug"], "c": x["company"], "d": x["start"], "n": x["headcount"], "lo": x["low"], "hi": x["high"],
-             "p": x["pct"], "ps": x["pct_show"], "pn": x["pct_note"], "l": x["label"], "cf": x["confidence"],
-             "i": x["industry"], "k": x["country"], "h": x["headline"], "np": x["n_publishers"],
-             "la": x["lat"], "lo2": x["lon"], "pl": x["plan_n"], "hz": x["horizon"],
-             "src": [[r["publisher"], r["url"]] for r in x["sources"][:3]]} for x in evs]
-    on_map = sum(1 for x in evs if x["lat"] is not None)
-    iso = updated.isoformat()
     body = f"""
-<section class="stage" data-stage>
-  <div class="stage-in">
-    <div class="stage-copy">
-      <div class="eyebrow"><span class="live" aria-hidden="true"></span><span>Live</span><span aria-hidden="true">·</span><span data-ago data-updated="{iso}">updated {updated.strftime("%H:%M")} UTC</span></div>
-      <h1 class="ticker"><span data-ticker data-base="{s['ytd']}" data-updated="{iso}" data-pace="{pace_h / 3600:.6f}">{fmt(s['ytd'])}</span></h1>
-      <p class="kicker">people laid off in {y}. <span>So far.</span></p>
-      <p class="deadpan" data-deadpan data-every="{every}" data-week="{wk_people}" data-cos="{wk_cos}">At this pace, someone loses their job every {every} seconds.</p>
-      <div class="stage-share">{share_buttons(url, share_text, "/og/home.png")}<a class="btn ghost" href="/og/story-home.png" download>Story</a></div>
-      <p class="fine">The counter is a live estimate at the last 30 days' pace (about {pace_h:.0f} people an hour). It resets to verified figures every hour. <a href="/methodology/">How we count</a></p>
-    </div>
-    <div class="globe-box" data-globe-box>
-      <canvas data-globe role="img" aria-label="Map of {on_map} layoff events in {y}"></canvas>
-      <div class="seg view" role="group" aria-label="Map view"><button type="button" data-view="globe" aria-pressed="true">Globe</button><button type="button" data-view="map" aria-pressed="false">Map</button></div>
-      <div class="zoom" role="group" aria-label="Zoom"><button type="button" data-zoom="in" aria-label="Zoom in">+</button><button type="button" data-zoom="out" aria-label="Zoom out">−</button><button type="button" data-zoom="reset" aria-label="Reset view" hidden>⟲</button></div>
-      <div class="legend"><span><i class="lg fresh"></i>last 7 days</span><span><i class="lg"></i>earlier in {y}</span><span>size = people</span></div>
-      <div class="pin" data-pin hidden role="dialog" aria-label="Layoff details"></div>
-    </div>
-  </div>
-  <div class="rightnow"><span class="rn-label"><span class="live" aria-hidden="true"></span>Right now</span><ol data-rightnow>{rightnow_items(evs)}</ol></div>
-</section>
-<div class="wrap">
-<section class="section">
-  <div class="tiles" style="margin-top:0">{tiles_html}</div>
-</section>
+<section class="hero" style="padding-bottom:0"><div class="eyebrow"><span class="live" aria-hidden="true"></span>Insights</div>
+<h1 class="big" style="font-size:clamp(40px,7vw,72px)">The numbers behind the globe.</h1>
+<p class="lede">Weekly totals, the biggest layoffs of {y}, and every event, filterable by sector and country. <a href="/">Back to the globe →</a></p></section>
+<section class="section"><div class="tiles" style="margin-top:0">{tiles_html}</div></section>
 <section class="section week-share">
   <div class="card week-card">
     <div><h3>This week in layoffs</h3><p class="cap">{fmt(wk_people)} people at {wk_cos} companies since {short_date((TODAY - timedelta(days=7)).isoformat())}. Ready to post.</p>
@@ -485,13 +556,9 @@ def home(evs, s, updated, industries, countries):
   <div class="section-head" style="margin-top:28px"><h2>Latest events</h2><p>Newest first</p></div>
   <div class="feed" data-feed>{feed}<button class="more" type="button" data-more>Show more</button></div>
 </section>
-</div>
-<script type="application/json" id="events">{json.dumps(slim, separators=(",", ":")).replace("</", "<\\/")}</script>
-<script type="application/json" id="warn">{json.dumps(early_warnings(evs), separators=(",", ":")).replace("</", "<\\/")}</script>
-<div class="dive" data-dive hidden><div class="dive-in" role="dialog" aria-modal="true" aria-labelledby="dive-title" tabindex="-1"></div></div>"""
-    title = f"{fmt(s['ytd'])} people laid off in {y}: {NAME}"
-    desc = f"{fmt(s['ytd'])} people laid off in {y} so far, live. Every number links to its sources."
-    return page("/", title, desc, body, "/og/home.png", "home", wrap=False)
+{json_script("events", slim_events(evs))}"""
+    return page("/insights/", f"Layoff insights {y}: {NAME}", f"Weekly layoffs, biggest cuts and every event of {y}, by sector and country.",
+                body, "/og/home.png")
 
 
 def source_row(src):
@@ -657,7 +724,7 @@ In {YEAR_START.year}, {fmt(s['undisclosed'])} shown events have no stated headco
 <li>Country is the company's headquarters unless a filing or the sources say where the cuts happen.</li>
 <li>Headline parsing is rule-based. An optional LLM extractor can be plugged in (<code>LR_LLM_CMD</code>) but is off.</li></ul>
 <p>Data: <a href="/data.json">data.json</a> holds every shown event with its sources. Map places: <a href="https://www.geonames.org/">GeoNames</a> (CC BY 4.0) and OpenStreetMap Nominatim; land outlines: Natural Earth via world-atlas.</p></div>"""
-    return page("/methodology/", f"Methodology: {NAME}", "How layoff-radar turns filings, WARN notices and news into sourced consensus numbers.", body)
+    return page("/methodology/", f"Methodology: {NAME}", f"How {NAME} turns filings, WARN notices and news into sourced consensus numbers.", body)
 
 
 # ------------------------------------------------------------------ build
@@ -685,6 +752,7 @@ def build():
         p.write_text(text)
 
     write("/", home(evs, s, updated, industries, countries))
+    write("/insights/", insights_page(evs, s, industries, countries))
     (DIST / "og" / "story").mkdir(parents=True)
     og.card(DIST / "og/home.png", f"People laid off in {YEAR_START.year}, tracked", fmt(s["ytd"]),
             f"across {fmt(s['companies'])} companies · {fmt(s['events'])} events", stamp, spark=s["weekly"])

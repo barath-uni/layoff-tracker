@@ -1,0 +1,19 @@
+# UI direction: what datafa.st gets right, and how it maps to layoffs
+
+Studied: datafa.st home, /changelog/globe-map-view-options, the realtime globe screenshot (datafast-globe-2d.jpg), the OG image and the dashboard demo stills (mux thumbnails, demo.jpg).
+
+1. **The map is the whole page.** Their realtime view is edge-to-edge map, no page chrome, no scroll; everything else floats on top. *Ours:* `100dvh`, `html,body{overflow:hidden}`, the globe canvas is `position:fixed; inset:0`, and every panel is an overlay with its own internal scroll.
+2. **Pins are faces, not dots.** Visitors are round avatars with a thick coloured ring and a tiny corner badge. That is what makes it feel alive and fun. *Ours:* each company is a round logo pin (favicon in a white disc, monogram fallback), ring coloured by recency, and a red corner badge when a WARN notice is filed.
+3. **Tiny grey action chips next to a pin** ("visited /startup/…"). *Ours:* a chip under fresh/large pins: "Meta −3,600 · 2d", the minus sign doing the deadpan work.
+4. **One compact glass card top-left** with a green live dot and one big number ("49 visitors on trustmrr.com"), then dense chip rows (referrers, countries, devices) with icons and counts. *Ours:* brand, a giant ticking counter with a pulsing red live dot, a deadpan line, then chip rows for top countries (flag + count) and sectors.
+5. **A dark translucent activity log bottom-left** with "x from 🇪🇬 Egypt visited /path · a few seconds ago" lines streaming in. *Ours:* a "Live" feed panel on the right: logo, company, people, a thin % of staff bar, time-ago. New rows slide in from the top and the matching pin pulses.
+6. **Flags everywhere.** Flags carry country info at a glance with zero text. *Ours:* flag emoji from the ISO code in feed rows, chips and the card.
+7. **Brand-icon favicons for referrers** (Google G, X, Reddit). Recognisable logos do the reading for you. *Ours:* company favicons via `icons.duckduckgo.com/ip3/<domain>.ico` from a curated domain map; anything unmapped gets a neutral monogram so nothing looks broken.
+8. **Restrained palette, one warm accent.** Their dashboard is near-white with a single coral-orange for revenue plus a soft blue. *Ours:* a near-black "night earth" (#07080a) with cool grey ink, and one accent, a warm red, reserved for fresh events, WARN and locked items.
+9. **Bars as row backgrounds.** Their referrer/country lists draw the bar behind the row label, tinted, not as a separate chart. *Ours:* the % of staff bar in feed rows and dive rows is a thin bar under the name, tinted accent; no tables.
+10. **Dark, rounded tooltips with a title row, a divider and tabular figures.** *Ours:* the pin card uses the same anatomy: logo + company header, divider, big number, facts in tabular mono, sources.
+11. **Rounded geometric sans, big bold numbers, small grey labels.** *Ours:* Geist 600 with tight tracking for numbers, `font-variant-numeric: tabular-nums` everywhere a number moves, Geist Mono for meta.
+12. **Map style options as a small toggle in the panel**, not a toolbar. *Ours:* globe/flat toggle, Replay and zoom live as small icon buttons on the glass, not in a header.
+13. **Motion that signals life, not decoration.** New avatars pop in, the dot pulses. *Ours:* pulse rings on fresh events, "people" particles drifting off a pin (count scaled by log(headcount)), a slow inertial spin; all off under `prefers-reduced-motion`.
+14. **A built-in reason to share.** Their globe is what people screenshot and post. *Ours:* "Replay 2026": a scrubber at the bottom that replays the year on the globe in ~20 s (pins drop in by date, the counter rolls up, the month label ticks), built for screen recordings.
+15. **Depth behind the glass.** Their "Details" opens a fuller breakdown. *Ours:* "Dive deeper" is a full-height drawer (sheet on phone) of designed rows, first rows clear, the rest blurred behind an email-only unlock card; charts move to /insights.
