@@ -138,7 +138,7 @@
       var ppl = t.rows.reduce(function (s, r) { return s + (r.n || 0); }, 0);
       note.appendChild(el("b", null, t.rows.length + " layoff" + (t.rows.length === 1 ? "" : "s")));
       note.appendChild(document.createTextNode((ppl ? ", " + U().fmt(ppl) + " people" : "") +
-        (t.id === "company" ? " at " + e.c : t.id === "sector" ? " in " + e.i : " in " + e.k) + " this year. Newest first."));
+        (t.id === "company" ? " at " + e.c : t.id === "sector" ? " in " + e.i : " in " + e.k) + " in the last 3 months. Newest first."));
     }
     body.appendChild(note);
     var free = t.warn ? FREE_WARN : FREE, total = t.rows.length, showCo = t.id !== "company";

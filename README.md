@@ -6,10 +6,11 @@ A public layoff tracker built on mined data only. The front page is a single-scr
 
 ```sh
 python3 -m radar all            # fetch -> process -> build (about 5 min on first run; HTTP is cached in data/cache)
-python3 -m radar fetch [gnews gnews_intl gdelt edgar warn_ca warn_md warn_tx warn_pa warn_co warn_wa tdnet nse asx hn reddit]
+python3 -m radar fetch [gnews gnews_intl edgar warn_ca warn_md warn_tx warn_pa warn_co warn_wa tdnet nse asx hn reddit]
                                 # pull sources (all if none given), one at a time, streamed into the DB in batches
 python3 -m radar process        # headlines -> claims -> events (consensus + confidence)
 python3 -m radar build          # dist/: HTML pages, data.json, share-card PNGs
+python3 -m radar report         # quality report: duplicates, unknown country, headcount > company, junk names
 python3 -m radar serve 8000     # local preview at http://127.0.0.1:8000 (Ctrl+C to stop)
 ```
 
@@ -30,14 +31,14 @@ Requirements: Python 3.11+ and Pillow (for share cards). Everything else is stdl
 ## Layout
 
 - `radar/sources.py`: fetchers for Google News RSS (English), SEC EDGAR 8-K Item 2.05, CA and MD WARN, HN Algolia and Reddit RSS
-- `radar/sources_intl.py`: Google News in 55 country editions with local-language keywords, GDELT DOC 2.0, Japan TDnet, India NSE, ASX
+- `radar/sources_intl.py`: Google News country editions with local-language keywords, Japan TDnet, India NSE, ASX (GDELT DOC adapter kept but disabled)
 - `radar/warn_more.py`: WARN notices for Texas (data.texas.gov), Pennsylvania, Colorado and Washington
 - `radar/extract.py`: rule-based English headline parser (company, headcount, %, retro/speculative flags, announced multi-year plans)
 - `radar/intl.py`: the same rules for 29 other languages (local layoff words, job nouns, number formats, rumour wording, CJK patterns)
 - `radar/consensus.py`: clustering, re-report folding, weighted-median headcount, confidence, visibility gate
 - `radar/build.py`, `radar/og.py`: static site, 1200×630 share cards and 1080×1920 stories
 - `radar/places.py`: curated HQ cities and employee totals (for "% of staff"), Nominatim geocoding with a DB cache
-- `radar/config.py`: brand name and site URL
+- `radar/config.py`: brand name, site URL, the source registry (`SOURCES`) and the Google News editions (`GNEWS_EDITIONS`, ~40 economies)
 - `site/static/globe.js` + `home.css`: the home app. Dot-matrix globe (canvas 2D, d3-geo vendored) with favicon logo pins, pulse rings and label chips; inertia drag, wheel/pinch zoom; live counter; live feed (bottom sheet on phones); pin card; "Replay" scrubber (the year in 20 s; `/?replay` autoplays for screen recordings)
 - `site/static/gate.js`: "Dive deeper" drawer (sheet on phones): designed rows, first rows clear, the rest blurred behind an email-only unlock (soft gate, unlocks client-side)
 - `radar/logos.py`: curated company domains (favicon pins; monogram fallback) and country ISO codes (flags)

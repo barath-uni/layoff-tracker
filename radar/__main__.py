@@ -1,4 +1,4 @@
-"""CLI: python -m radar [fetch [sources..] | process | build | serve [port] | all]"""
+"""CLI: python -m radar [fetch [sources..] | process | build | serve [port] | report | all]"""
 import json
 import os
 import sys
@@ -92,10 +92,15 @@ def main(argv):
     elif cmd == "serve":
         from .build import serve
         serve(int(argv[1]) if len(argv) > 1 else 8000)
+    elif cmd == "report":
+        from .report import report
+        report()
     elif cmd == "all":
+        t0 = time.time()
         fetch(); process()
         from .build import build
         build()
+        print(f"all done in {time.time() - t0:.0f}s")
     else:
         print(__doc__)
 

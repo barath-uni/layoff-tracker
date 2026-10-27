@@ -50,43 +50,11 @@ LANG_Q = {
     "he": 'פיטורים OR מפטרת',
 }
 
-# (gl, hl, ceid, lang, country, backfill window in days). Busy editions get shorter windows: Google returns at most
-# 100 results per query, so a long window in a big market silently drops stories.
-EDITIONS = [
-    ("GB", "en-GB", "GB:en", "en", "United Kingdom", 7), ("IN", "en-IN", "IN:en", "en", "India", 7),
-    ("CA", "en-CA", "CA:en", "en", "Canada", 14), ("AU", "en-AU", "AU:en", "en", "Australia", 14),
-    ("SG", "en-SG", "SG:en", "en", "Singapore", 15), ("IE", "en-IE", "IE:en", "en", "Ireland", 15),
-    ("NZ", "en-NZ", "NZ:en", "en", "New Zealand", 15), ("ZA", "en-ZA", "ZA:en", "en", "South Africa", 15),
-    ("NG", "en-NG", "NG:en", "en", "Nigeria", 15), ("KE", "en-KE", "KE:en", "en", "Kenya", 30),
-    ("PH", "en-PH", "PH:en", "en", "Philippines", 15), ("MY", "en-MY", "MY:en", "en", "Malaysia", 15),
-    ("PK", "en-PK", "PK:en", "en", "Pakistan", 30), ("IL", "en-IL", "IL:en", "en", "Israel", 15),
-    ("DE", "de", "DE:de", "de", "Germany", 7), ("AT", "de-AT", "AT:de", "de", "Austria", 15),
-    ("CH", "de-CH", "CH:de", "de", "Switzerland", 15), ("FR", "fr", "FR:fr", "fr", "France", 7),
-    ("BE", "fr-BE", "BE:fr", "fr", "Belgium", 30), ("BE", "nl-BE", "BE:nl", "nl", "Belgium", 15),
-    ("CA", "fr-CA", "CA:fr", "fr", "Canada", 30), ("NL", "nl", "NL:nl", "nl", "Netherlands", 15),
-    ("IT", "it", "IT:it", "it", "Italy", 7), ("ES", "es", "ES:es", "es", "Spain", 7),
-    ("MX", "es-419", "MX:es-419", "es", "Mexico", 15), ("AR", "es-419", "AR:es-419", "es", "Argentina", 15),
-    ("CO", "es-419", "CO:es-419", "es", "Colombia", 30), ("CL", "es-419", "CL:es-419", "es", "Chile", 30),
-    ("PE", "es-419", "PE:es-419", "es", "Peru", 30), ("BR", "pt-BR", "BR:pt-419", "pt", "Brazil", 7),
-    ("PT", "pt-PT", "PT:pt-150", "pt", "Portugal", 30), ("PL", "pl", "PL:pl", "pl", "Poland", 15),
-    ("SE", "sv", "SE:sv", "sv", "Sweden", 15), ("NO", "no", "NO:no", "no", "Norway", 30),
-    ("DK", "da", "DK:da", "da", "Denmark", 30), ("FI", "fi", "FI:fi", "fi", "Finland", 30),
-    ("CZ", "cs", "CZ:cs", "cs", "Czechia", 30), ("HU", "hu", "HU:hu", "hu", "Hungary", 30),
-    ("RO", "ro", "RO:ro", "ro", "Romania", 30), ("GR", "el", "GR:el", "el", "Greece", 30),
-    ("TR", "tr", "TR:tr", "tr", "Turkey", 15), ("RU", "ru", "RU:ru", "ru", "Russia", 15),
-    ("UA", "uk", "UA:uk", "uk", "Ukraine", 30), ("JP", "ja", "JP:ja", "ja", "Japan", 7),
-    ("KR", "ko", "KR:ko", "ko", "South Korea", 7), ("CN", "zh-CN", "CN:zh-Hans", "zh", "China", 7),
-    ("TW", "zh-TW", "TW:zh-Hant", "zh", "Taiwan", 15), ("HK", "zh-HK", "HK:zh-Hant", "zh", "Hong Kong", 15),
-    ("IN", "hi", "IN:hi", "hi", "India", 15), ("BD", "bn", "BD:bn", "bn", "Bangladesh", 30),
-    ("ID", "id", "ID:id", "id", "Indonesia", 7), ("TH", "th", "TH:th", "th", "Thailand", 30),
-    ("VN", "vi", "VN:vi", "vi", "Vietnam", 30), ("SA", "ar", "SA:ar", "ar", "Saudi Arabia", 30),
-    ("EG", "ar", "EG:ar", "ar", "Egypt", 30), ("AE", "ar", "AE:ar", "ar", "United Arab Emirates", 30),
-    ("IL", "he", "IL:he", "he", "Israel", 15),
-]
+from .config import GNEWS_EDITIONS as EDITIONS  # noqa: E402  (country editions live in config)
 
 
 def gnews_intl(backfill=None):
-    """Google News in ~55 editions with local-language layoff keywords: last 7 days every run, plus a windowed
+    """Google News in ~40 editions with local-language layoff keywords: last 7 days every run, plus a windowed
     backfill from LR_SINCE (or Jan 1) on the first run and once a day."""
     backfill = _want_backfill("gnews_intl") if backfill is None else backfill
     jobs = []

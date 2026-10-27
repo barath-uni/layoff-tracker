@@ -326,11 +326,14 @@ def reddit():
 
 
 def _all():
-    from .sources_intl import asx, gdelt, gnews_intl, nse, tdnet
-    from .warn_more import warn_co, warn_pa, warn_tx, warn_wa
-    return {"gnews": google_news, "gnews_intl": gnews_intl, "gdelt": gdelt, "edgar": edgar, "warn_ca": warn_ca,
-            "warn_md": warn_md, "warn_tx": warn_tx, "warn_pa": warn_pa, "warn_co": warn_co, "warn_wa": warn_wa,
-            "tdnet": tdnet, "nse": nse, "asx": asx, "hn": hackernews, "reddit": reddit}
+    """The registry lives in config.SOURCES ("module:adapter"), one adapter per source."""
+    import importlib
+    from .config import SOURCES
+    out = {}
+    for name, ref in SOURCES.items():
+        mod, fn = ref.split(":")
+        out[name] = getattr(importlib.import_module("radar." + mod), fn)
+    return out
 
 
 class _Lazy(dict):

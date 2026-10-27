@@ -102,7 +102,7 @@ chennai montreal calgary manchester birmingham glasgow omaha indianapolis""".spl
 AUX_TRAIL = set("is are will to plans plan set reportedly quietly now also again begins starts moves expected could may would says".split())
 
 LEGAL_SUFFIX = re.compile(r"(?i)[,\s]+(inc\.?|incorporated|corp\.?|corporation|llc|l\.l\.c\.|ltd\.?|limited|co\.?|company|plc|"
-                          r"holdings?|group|n\.a\.?|n\.v\.?|l\.p\.|lp|s\.a\.|ag|gmbh|se|nv|n\.v\.|bv|oyj|asa|pty|pte|/[a-z]{2}/?)$")
+                          r"holdings?|groups?|n\.a\.?|n\.v\.?|l\.p\.|lp|s\.a\.|ag|gmbh|se|nv|n\.v\.|bv|oyj|asa|pty|pte|/[a-z]{2}/?)$")
 
 
 def clean_company(name):
@@ -111,6 +111,8 @@ def clean_company(name):
     name = re.sub(r"\s+dba\s+.*$", "", name, flags=re.I)
     name = re.sub(r"(?i)[\s,(]+(?:updated?|update|amended|revised|corrected|etal|et\.? al\.?)\)?\s*$", "", name)
     name = re.split(r"\s+[-–]\s+", name)[0]  # WARN site suffixes: "Intel Corporation - SC11"
+    name = re.split(r"\s+/\s+", name)[0]  # WARN multi-site: "Maverick Washington LLC / Palace Casino"
+    name = re.sub(r"(?i)(,?\s+(?:inc|llc|corp|ltd)\.?)\s+\S.*$", r"\1", name)  # "Uber Technologies, Inc. 1725 3rd Street"
     name = re.sub(r"^\S+-(?:owned|backed|based)\s+", "", name)
     name = re.sub(r"\s*\(.*?\)\s*", " ", name).strip()
     for _ in range(3):

@@ -289,6 +289,7 @@ KNOWN = {
 }
 
 ALIASES = {
+    "airbaltic": "air-baltic", "24hr-homecare": "24-hour-home-care", "o-briens-market": "o-brien-s-market",
     "alphabet": "google", "meta-platforms": "meta", "facebook": "meta", "amazon-com": "amazon", "aws": "amazon",
     "amazon-web-services": "amazon", "gm": "general-motors", "international-business-machines": "ibm",
     "jpmorgan-chase": "jpmorgan", "jp-morgan": "jpmorgan", "citi": "citigroup", "p-g": "procter-gamble",

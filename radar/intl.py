@@ -141,7 +141,7 @@ lang("pt",
      spec=r"poderá|\bpode\b|estuda|avalia|\bsegundo\b|ameaç|rumor|teme|risco|\?|prevê|possível",
      past=r"\bdesde\b|no total|ano passado|\bem 20\d\d|\bjá\b",
      plan=r"\baté\s+(?:o\s+fim\s+de\s+|20)?(20\d\d|\d\d)\b|nos próximos (?:\w+ )?anos",
-     neg=r"sem demissões|descarta|contrat|greve|justiça|tribunal|reintegr|suspende",
+     neg=r"sem demissões|\bnão\b(?:\s+\S+){0,3}\s+(?:demitiu|demite|fechou)|desmente|\bnega\b|descarta|contrat|greve|justiça|tribunal|reintegr|suspende",
      roundup=r"essas empresas|lista|onda de|as empresas que|empresas que",
      mult={"mil": 1000, "milhões": 1_000_000},
      pctw=r"funcionários|quadro|força de trabalho|empregados|colaboradores|pessoal",
@@ -315,15 +315,19 @@ lang("hi", kw=r"छंटनी|छँटनी|नौकरी से निक
      spec=r"सकती|सकता|संभव|खबर|रिपोर्ट|\?", past=r"पिछले साल|अब तक|कुल", plan=r"(20\d\d) तक", neg=r"भर्ती|नहीं होगी छंटनी",
      mult={"हजार": 1000, "हज़ार": 1000, "लाख": 100_000})
 lang("bn", kw=r"ছাঁটাই|চাকরিচ্যুত", job=r"কর্মী\w*|জন", spec=r"\?", mult={"হাজার": 1000})
-lang("th", kw=r"เลิกจ้าง|ปลดพนักงาน|ปลดคน|ลดพนักงาน", job=r"พนักงาน|คน|ราย", spec=r"อาจ|\?", mult={"พัน": 1000})
+lang("th", kw=r"เลิกจ้าง|ปลดพนักงาน|ปลดคน|ลดพนักงาน", job=r"พนักงาน|คน|ราย", spec=r"พิจารณา|อาจ|\?", mult={"พัน": 1000})
 lang("ar", kw=r"تسريح|الاستغناء عن|فصل\s+\S*\s*(?:موظف|عامل)|خفض\s+\S*\s*(?:الوظائف|العمالة)", job=r"موظف\w*|عامل\w*|وظيفة|وظائف",
      spec=r"قد\b|يدرس|\?|؟", mult={"ألف": 1000, "آلاف": 1000})
 lang("he", kw=r"פיטור|מפטר|קיצוץ\s+\S*\s*(?:עובדים|משרות)|צמצום", job=r"עובדים|משרות|עובד", spec=r"עשוי|שוקל|\?", mult={"אלף": 1000})
 
 STOP_ALL = set("""ai ia ki it ceo cfo eu ue usa us abd ии ші ит hr pr hlv belgische deense duitse franse amerikaanse britse
 nederlandse britisk tre lokale färre arbetslösheten známá όχι τι οι να δεν folytatódik óriási kevesebb újabb tömeges
-ultima oră ultima ora orang kena kemnaker kemnaker catat cơn заява виїзд змушують krakowie warszawie""".split()) | {
+ultima oră ultima ora orang kena kemnaker kemnaker catat cơn заява виїзд змушують krakowie warszawie
+korban sebanyak lebih tekstil es wo ur state kalsel jatim jateng jabar jakarta angka dona eeuu ee.uu milei naver pt ms rs n.j""".split()) | {
     "ultima oră", "orang kena", "kemnaker catat", "у росії", "в россии"}
+# A name containing any of these words is wording, not an employer ("50 Ribu Pekerja Terdampak PHK", "BMW Pracę").
+REJECT_TOKENS = set("""ribu pekerja kemnaker korban sebanyak pelatihan terdampak kena tenaga disnaker disnakertrans pemprov
+pracę eeuu ee.uu dione""".split())
 # Lower-case word counts per language, filled by consensus.build_claims from the corpus itself.
 VOCAB = {}
 
@@ -341,6 +345,9 @@ CJK = {"ja", "zh", "ko"}
 
 # Common names in local scripts -> display name (the gazetteer then maps it to the canonical slug).
 SCRIPT_NAMES = {
+    "巴克莱": "Barclays", "巴克萊": "Barclays", "巴克莱银行": "Barclays", "巴克萊銀行": "Barclays", "바클레": "Barclays",
+    "바클레이스": "Barclays", "우버": "Uber", "优步": "Uber", "優步": "Uber", "运通": "American Express", "運通": "American Express", "볼보": "Volvo",
+    "奈飞": "Netflix", "網飛": "Netflix", "애플": "Apple", "保时捷": "Porsche", "保時捷": "Porsche", "포르쉐": "Porsche",
     "マイクロソフト": "Microsoft", "アマゾン": "Amazon", "グーグル": "Google", "メタ": "Meta", "アップル": "Apple",
     "インテル": "Intel", "オラクル": "Oracle", "テスラ": "Tesla", "日産": "Nissan", "日産自動車": "Nissan",
     "トヨタ": "Toyota", "トヨタ自動車": "Toyota", "ホンダ": "Honda", "本田技研工業": "Honda", "パナソニック": "Panasonic",
@@ -432,6 +439,8 @@ def numbers_latin(t, L):
     rx = re.compile(rf"(?<![\d.,])(?P<n>{SEP_NUM}){mw_rx}\s+(?:\S+\s+){{0,2}}?(?:{L['job']})\b", re.I)
     hc = None
     for m in rx.finditer(t):
+        if re.search(r"(?:R\$|US\$|\$|€|£|Rp\.?)\s*$", t[max(0, m.start() - 5):m.start()]):
+            continue  # money, not people
         tail = t[m.end():m.end() + 20].lower()
         if re.match(r"\s*(?:euro|eur|€|dollar|\$|franken|kronen|złotych|reais|pesos|rupi|rubl|yen|won|lira)", tail):
             continue
@@ -530,6 +539,8 @@ def _valid(name, L, code):
         return False
     if low in STOP_ALL:
         return False
+    if any(w.strip(".,:;\"'") in REJECT_TOKENS for w in low.split()):
+        return False
     vocab = VOCAB.get(code)
     if vocab and code != "de" and all(vocab.get(w.lower().strip("\"'«»„“”"), 0) >= 3 for w in name.split()):
         return False  # every word also shows up lower-case in this language's headlines: a common word, not a name
@@ -623,7 +634,7 @@ JA_PREFIX = re.compile(r"^(?:[\[【<＜(（][^\]】>＞)）]{1,12}[\]】>＞)）
 JA_COUNTRY = re.compile(r"^(?:米|英|独|仏|中|韓|台|印|欧|日|豪|加|蘭|瑞|伊|露|米国|中国|韓国|ドイツ|英国)(?=[゠-ヿA-Za-z])")
 CJK_STOP = set("""企業 会社 上場企業 大手 日本 政府 業界 黒字 外資 製造業 IT企業 銀行 メガバンク 各社 国内 世界 米国 中国 韓国 米企業
 公司 企业 企業 大厂 大廠 科技公司 外企 硅谷 银行 银行业 互联网 车企 車企 多家 巨头 巨頭 美国 美國 中国 中國 日本 韩国 全球 行业 行業 员工 員工 网传 網傳 又一
-경기 AI 정부 기업 업계 대기업 은행권 국내 은행 금융권 유통업계 산업계 재계 직원 노조 회사 미국 중국 일본 한국 글로벌""".split())
+영국 적자 비전 対象 위기의 독일 인천 매출 중동 재정 내년 시간 네이버 大学 大學 科技 オランダ政府 政府 경기 AI 정부 기업 업계 대기업 은행권 국내 은행 금융권 유통업계 산업계 재계 직원 노조 회사 미국 중국 일본 한국 글로벌""".split())
 
 
 def company_cjk(seg, code):
@@ -652,7 +663,9 @@ def company_cjk(seg, code):
             cand = re.sub(r"^(?:美|日|中|韓|獨|英)(?=[가-힣A-Za-z])", "", cand)
     if not cand:
         return None, None
-    cand = cand.strip(" 「」『』\"'“”‘’・")
+    cand = cand.strip(" 「」『』《》〈〉\"'“”‘’・")
+    if code == "zh" and " " in cand:
+        cand = cand.split()[-1]
     if not cand or cand in CJK_STOP or len(cand) < 2 or re.search(r"\d", cand):
         return None, None
     if R[code]["kw"].search(cand) or re.search(r"[、。！？!?]", cand):

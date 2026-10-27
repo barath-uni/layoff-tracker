@@ -7,7 +7,7 @@ import time
 import unicodedata
 import urllib.error
 import urllib.request
-from datetime import date, datetime, timezone
+from datetime import timedelta, date, datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
@@ -21,8 +21,10 @@ ASSETS = ROOT / "assets"
 # Today can be pinned for reproducible builds (LR_TODAY=2026-10-27).
 TODAY = date.fromisoformat(os.environ["LR_TODAY"]) if os.environ.get("LR_TODAY") else date.today()
 YEAR_START = date(TODAY.year, 1, 1)
-# How far back fetchers look (LR_SINCE=2025-01-01 for a two-year backfill). The site still reports YEAR_START onward.
-SINCE = date.fromisoformat(os.environ["LR_SINCE"]) if os.environ.get("LR_SINCE") else YEAR_START
+# The data window: fetchers look back to SINCE and the site reports SINCE onward. Default: the last 3 months.
+WINDOW_DAYS = 92
+SINCE = date.fromisoformat(os.environ["LR_SINCE"]) if os.environ.get("LR_SINCE") else TODAY - timedelta(days=WINDOW_DAYS)
+PERIOD = "the last 3 months" if not os.environ.get("LR_SINCE") else f"since {SINCE:%b %-d, %Y}"
 
 BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64) layoff-radar/0.1 (+public layoff tracker)"
 # SEC asks for a descriptive UA with a contact. Set LR_CONTACT to your address.

@@ -216,7 +216,7 @@
 
   // ---------------------------------------------------------------- pins, rings, chips
   var replay = { on: false, playing: false, cur: 0, prev: 0, target: null, dur: 20000,
-    t0: Date.parse(WK.y + "-01-01T00:00:00"), t1: tOf(WK.today) + DAY / 2 - 1 };
+    t0: Date.parse((WK.s0 || WK.y + "-01-01") + "T00:00:00"), t1: tOf(WK.today) + DAY / 2 - 1 };
   var selected = null, hover = null, placed = [], chipBoxes = [];
   var cardEl = $("[data-card]");
   function nowRef() { return replay.on ? replay.cur : Date.now(); }
@@ -531,7 +531,7 @@
       if (!reduced && i < 12) { item.className = "enter"; item.firstChild.style.animationDelay = (i * 45) + "ms"; }
       frag.appendChild(item);
     });
-    if (!feedPool.length) frag.appendChild(el("li", "empty", "No layoffs tracked yet this year."));
+    if (!feedPool.length) frag.appendChild(el("li", "empty", "No layoffs tracked yet."));
     list.appendChild(frag);
   }
   function pushFeed(e, at) {

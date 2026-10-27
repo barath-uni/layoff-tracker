@@ -61,14 +61,19 @@ def weighted_median(pairs):
 
 
 CHUNK = 2000
+from .config import SOURCES as _SOURCES  # noqa: E402
+from .util import SINCE  # noqa: E402
+_SRC_IN = ",".join("'%s'" % k for k in _SOURCES)
 
 
 def iter_items(con):
     """Stream items in id order, a chunk at a time (the corpus never sits in memory as a whole)."""
     last = 0
     while True:
+        # Only the data window (util.SINCE) and enabled sources (config.SOURCES); older rows stay in the DB as cache.
         rows = con.execute("SELECT id, source, tier, publisher, url, title, text, published, meta FROM items "
-                           "WHERE published IS NOT NULL AND id > ? ORDER BY id LIMIT ?", (last, CHUNK)).fetchall()
+                           f"WHERE published IS NOT NULL AND published >= ? AND source IN ({_SRC_IN}) AND id > ? "
+                           "ORDER BY id LIMIT ?", (SINCE.isoformat(), last, CHUNK)).fetchall()
         if not rows:
             return
         for r in rows:
