@@ -8,5 +8,7 @@ Quality: `python3 -m radar report` (dupes 4, unknown country 30, headcount>compa
 Run: `python3 -m radar all` (~15 min with warm cache, peak RSS <100 MB), then `python3 -m radar serve 8000`.
 Verified: /, /insights/, /methodology/, /company/{volkswagen,barclays,ups}/ all 200 with brand and non-zero totals (curl only, no browser check).
 Known gaps: rule-based parsing in 29 languages (cross-language dupes still possible), Google News redirect links, Unknown-country US regionals.
-Deploy: `.github/workflows/refresh.yml` prepared, not pushed.
-Next: user checks the globe on iPhone, picks domain, sets up Cloudflare Pages + D1/KV (README). Then ROADMAP "Data: deferred".
+Deploy (2026-10-28): public repo github.com/barath-uni/layoff-tracker. `main` = source; `site` (DEFAULT branch) = tag `site-base` (workflow only) + one force-pushed build commit (dist + deploy/vercel/api + vercel.json). Hourly workflow on GH Actions (data/ in Actions cache, EDGAR daily via LR_DAILY=edgar) runs deploy/push-site.sh with GITHUB_TOKEN. After editing refresh.yml on main: `deploy/push-site.sh --new-base` locally. Commit emails rewritten to GitHub noreply (local backup tag backup/pre-public-rewrite, never push it).
+First CI run 2026-10-28: success in 16 min (empty cache; fetch 15.5 min), 788 events. EDGAR 403 from CI (SEC wants a contact email in the UA): set repo secret LR_CONTACT. WARN TX and ASX 0 as before.
+Sign-ups on Vercel: only logged to function logs; /api/stats = 501. TODO Upstash Redis.
+Next: user imports the repo in Vercel (Other, no build) -> https://layoff-tracker.vercel.app (if the domain differs, set repo variable SITE_URL). Then ROADMAP "Data: deferred".
