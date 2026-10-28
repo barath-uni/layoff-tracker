@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 
 from . import consensus, sources
 from .db import connect
@@ -15,10 +16,18 @@ BATCH = 400
 def fetch(names=None):
     """Stream each source into the DB in small batches, one source at a time, and log what it cost."""
     con = connect()
+    explicit = bool(names)
     names = names or list(sources.ALL)
+    # LR_DAILY=edgar,...: in a full fetch, these sources run at most once a day (skipped if an ok run is < 23 h old).
+    daily = {s for s in os.environ.get("LR_DAILY", "").split(",") if s} if not explicit else set()
     total = 0
     mode = "backfill" if os.environ.get("LR_BACKFILL") == "1" else os.environ.get("LR_BACKFILL", "auto")
     for n in names:
+        if n in daily:
+            last = con.execute("SELECT MAX(at) FROM source_runs WHERE source = ? AND ok = 1", (n,)).fetchone()[0]
+            if last and last > (datetime.now(timezone.utc) - timedelta(hours=23)).replace(microsecond=0).isoformat():
+                print(f"fetch {n}: skipped (daily source, last ok run {last})")
+                continue
         print(f"fetch {n}")
         for k in NET:
             NET[k] = 0

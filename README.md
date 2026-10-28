@@ -21,7 +21,8 @@ Requirements: Python 3.11+ and Pillow (for share cards). Everything else is stdl
 | Var | Purpose |
 |---|---|
 | `SITE_URL` | Absolute base URL used in share links and OG tags (default `http://localhost:8000`). Set it before `build` for deploys. |
-| `LR_CONTACT` | Contact email in the SEC User-Agent (SEC asks for one). |
+| `LR_CONTACT` | Contact in the SEC User-Agent (SEC asks for one). |
+| `LR_DAILY` | Comma-separated sources a full fetch runs at most once a day (CI: `edgar`). |
 | `LR_LLM_CMD` | Optional extractor command (JSON in on stdin, JSON out). Off by default; see `radar/llm.py`. |
 | `LR_TODAY` | Pin "today" (YYYY-MM-DD) for reproducible builds. |
 | `LR_BRAND` | Product name shown everywhere, share cards included (default `Layoff Tracker`). |
@@ -47,20 +48,17 @@ Requirements: Python 3.11+ and Pillow (for share cards). Everything else is stdl
 - `site/static/`: CSS, JS, fonts. `research/notes.md`: competitor and source research; `research/sources-by-country.md`: coverage per country; `research/scale.md`: run costs and the full-coverage extrapolation
 - `data/` (gitignored): SQLite DB and HTTP cache. `dist/` (gitignored): build output
 
-## Deploy (hourly, prepared but not active)
+## Deploy (GitHub Actions + Vercel, hourly)
 
-`.github/workflows/refresh.yml` runs `python -m radar all` every hour and deploys `dist/` to Cloudflare Pages with wrangler.
-`data/` (SQLite DB and HTTP cache, about 30 MB) is kept between runs in the GitHub Actions cache.
+Repo: https://github.com/barath-uni/layoff-tracker. Branches: `main` = source; `site` (the default branch) = one orphan commit holding the built site (`dist/`), the Vercel functions (`deploy/vercel/api/`) and `vercel.json`. Vercel's Git integration deploys every push to `site`; `main` is not deployed (`vercel.json` on main).
 
-One-time setup:
-1. Push this repo to GitHub.
-2. In Cloudflare, create a Pages project with direct upload (no Git integration needed) and an API token with *Cloudflare Pages: Edit*.
-3. In the GitHub repo settings, add:
-   - secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` and `LR_CONTACT` (your email, for the SEC User-Agent)
-   - variables `CF_PAGES_PROJECT` (the project name), `SITE_URL` (e.g. `https://yourdomain.com`) and, optionally, `LR_BRAND`
-4. Run the workflow once by hand (Actions → refresh → Run workflow) to seed the DB. After that it runs hourly.
+`.github/workflows/refresh.yml` runs every hour (and on demand: Actions → refresh → Run workflow): restore `data/` (SQLite DB + HTTP cache) from the Actions cache, `python -m radar all`, save the cache, then `deploy/assemble-site.sh` and force-push `site`. SEC EDGAR is fetched at most once a day (`LR_DAILY=edgar`: skipped while its last successful run is under 23 h old); all other sources run hourly. The workflow file is copied onto `site` because scheduled workflows run from the default branch; it always checks out `main` for the code.
 
-The first run on an empty cache re-scans the whole year of news and geocodes places (OpenStreetMap Nominatim, 1 request/s). Expect 10–15 minutes. Later runs take a couple of minutes.
+Repo settings: variable `SITE_URL` (default `https://layoff-tracker.vercel.app`; change it if Vercel gives another domain), optional secret `LR_CONTACT` (SEC User-Agent contact; defaults to the repo URL), secret `SITE_DEPLOY_KEY` (private half of a write deploy key, so the push may include the workflow file).
+
+Vercel (once): Add New → Project → import `barath-uni/layoff-tracker` → Framework Preset "Other", no build command → Deploy.
+
+Sign-ups on Vercel: `deploy/vercel/api/` only logs sign-ups and events to the function logs (Vercel → project → Logs); `/api/stats` answers 501. TODO: Upstash Redis. The Cloudflare function below is kept for reference.
 
 ## Sign-up gate (a demand test, not a paywall)
 
