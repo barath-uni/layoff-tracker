@@ -50,11 +50,11 @@ Requirements: Python 3.11+ and Pillow (for share cards). Everything else is stdl
 
 ## Deploy (GitHub Actions + Vercel, hourly)
 
-Repo: https://github.com/barath-uni/layoff-tracker. Branches: `main` = source; `site` (the default branch) = one orphan commit holding the built site (`dist/`), the Vercel functions (`deploy/vercel/api/`) and `vercel.json`. Vercel's Git integration deploys every push to `site`; `main` is not deployed (`vercel.json` on main).
+Repo: https://github.com/barath-uni/layoff-tracker. Branches: `main` = source; `site` (the default branch) = the tag `site-base` (only the workflow file) plus ONE force-pushed commit holding the built site (`dist/`), the Vercel functions (`deploy/vercel/api/`) and `vercel.json`, so the repo stays small. Vercel's Git integration deploys every push to `site`; `main` is not deployed (`vercel.json` on main).
 
-`.github/workflows/refresh.yml` runs every hour (and on demand: Actions → refresh → Run workflow): restore `data/` (SQLite DB + HTTP cache) from the Actions cache, `python -m radar all`, save the cache, then `deploy/assemble-site.sh` and force-push `site`. SEC EDGAR is fetched at most once a day (`LR_DAILY=edgar`: skipped while its last successful run is under 23 h old); all other sources run hourly. The workflow file is copied onto `site` because scheduled workflows run from the default branch; it always checks out `main` for the code.
+`.github/workflows/refresh.yml` runs every hour (and on demand: Actions → refresh → Run workflow): restore `data/` (SQLite DB + HTTP cache) from the Actions cache, `python -m radar all`, save the cache, then `deploy/push-site.sh` force-pushes `site` with `GITHUB_TOKEN`. SEC EDGAR is fetched at most once a day (`LR_DAILY=edgar`: skipped while its last successful run is under 23 h old); all other sources run hourly. Scheduled workflows run from the default branch, so `site` carries the workflow file through `site-base`; it always checks out `main` for the code. After editing `refresh.yml` on main, run `deploy/push-site.sh --new-base` locally (GITHUB_TOKEN may not push workflow files).
 
-Repo settings: variable `SITE_URL` (default `https://layoff-tracker.vercel.app`; change it if Vercel gives another domain), optional secret `LR_CONTACT` (SEC User-Agent contact; defaults to the repo URL), secret `SITE_DEPLOY_KEY` (private half of a write deploy key, so the push may include the workflow file).
+Repo settings: variable `SITE_URL` (default `https://layoff-tracker.vercel.app`; change it if Vercel gives another domain) and optional secret `LR_CONTACT` (SEC User-Agent contact; defaults to the repo URL). Nothing else is needed.
 
 Vercel (once): Add New → Project → import `barath-uni/layoff-tracker` → Framework Preset "Other", no build command → Deploy.
 

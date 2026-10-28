@@ -1,9 +1,8 @@
-# Hourly: fetch sources -> rebuild consensus -> build static site -> force-push one commit to the `site` branch,
-# which Vercel deploys (Git integration). The SQLite DB and HTTP cache (data/) persist through the Actions cache.
-# `site` is the default branch, so this file is copied there on every run (scheduled runs use the default branch's copy);
-# the code itself always comes from `main`.
-# Optional repo settings: variable SITE_URL, secret LR_CONTACT (SEC User-Agent contact), secret SITE_DEPLOY_KEY
-# (write deploy key, needed because a GITHUB_TOKEN push may not create workflow files).
+# Hourly: fetch sources -> rebuild consensus -> build static site -> force-push the `site` branch, which Vercel
+# deploys (Git integration). The SQLite DB and HTTP cache (data/) persist through the Actions cache.
+# `site` is the default branch, so scheduled runs use the copy of this file in tag `site-base` (see deploy/push-site.sh);
+# the code always comes from `main`. After editing this file on main, run `deploy/push-site.sh --new-base` locally.
+# Optional repo settings: variable SITE_URL, secret LR_CONTACT (SEC User-Agent contact).
 name: refresh
 
 on:
@@ -61,23 +60,7 @@ jobs:
           path: data
           key: radar-data-${{ github.run_id }}
 
-      - name: Push the site branch (one orphan commit)
+      - name: Push the site branch (site-base + one build commit)
         env:
-          SITE_DEPLOY_KEY: ${{ secrets.SITE_DEPLOY_KEY }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          src=$(git rev-parse --short HEAD)
-          deploy/assemble-site.sh "$RUNNER_TEMP/site"
-          cd "$RUNNER_TEMP/site"
-          git init -q -b site
-          git add -A
-          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -q -m "Site build $(date -u +%Y-%m-%dT%H:%MZ) from main@$src"
-          if [ -n "$SITE_DEPLOY_KEY" ]; then
-            printf '%s\n' "$SITE_DEPLOY_KEY" > "$RUNNER_TEMP/key" && chmod 600 "$RUNNER_TEMP/key"
-            GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" \
-              git push -f "git@github.com:${GITHUB_REPOSITORY}.git" HEAD:site
-            rm -f "$RUNNER_TEMP/key"
-          else
-            git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:site
-          fi
+          PUSH_URL: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
+        run: deploy/push-site.sh
