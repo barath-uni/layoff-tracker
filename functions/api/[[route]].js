@@ -1,5 +1,6 @@
 // Cloudflare Pages Function: /api/signup, /api/event, /api/stats.
 // Storage: a D1 binding named DB (preferred) or a KV namespace bound as SIGNUPS. Tables create themselves.
+// Without either, sign-ups still succeed for the visitor and are only console.log'ed (see noStore).
 // Local preview (`python -m radar serve`) implements the same routes in radar/build.py and writes data/signups.jsonl.
 // No third-party analytics: only counts (panel opens, gate views, sign-ups) and the emails people type in.
 
@@ -95,10 +96,26 @@ const KV = {
   },
 };
 
+// No D1/KV bound (the free default until the token or dashboard adds one): never error to the visitor.
+// Sign-ups and events are console.log'ed (Workers & Pages -> project -> Functions -> Real-time logs); /api/stats = 501.
+async function noStore(request, route) {
+  if (route === "stats") return json(501, { ok: false, error: "No storage bound (add D1 as DB or KV as SIGNUPS)." });
+  if (request.method !== "POST") return json(405, { ok: false });
+  let d = {};
+  try { d = await request.json(); } catch {}
+  if (route === "event") return json(200, { ok: true });
+  if (route !== "signup") return json(404, { ok: false });
+  if (d.website) return json(200, { ok: true });
+  const email = String(d.email || "").trim().toLowerCase();
+  if (email.length > 254 || !EMAIL_RE.test(email)) return json(400, { ok: false, error: "Enter a valid email." });
+  console.log(JSON.stringify({ signup: email, at: new Date().toISOString(), src: String(d.src || "").slice(0, 80) }));
+  return json(200, { ok: true, known: false });
+}
+
 export async function onRequest({ request, env, params }) {
   const route = (params.route || []).join("/");
   const store = env.DB ? D1 : env.SIGNUPS ? KV : null;
-  if (!store) return json(503, { ok: false, error: "No storage bound (add D1 as DB or KV as SIGNUPS)." });
+  if (!store) return noStore(request, route); // no binding yet: answer success, log to the Pages Function logs
 
   if (route === "stats" && request.method === "GET") {
     const key = new URL(request.url).searchParams.get("key");

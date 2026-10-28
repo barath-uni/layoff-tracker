@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Force-push the `site` branch: tag `site-base` (an orphan commit holding only the refresh workflow, because scheduled
-# workflows run from the default branch) + ONE commit on top with the built dist/, the Vercel functions and vercel.json.
+# workflows run from the default branch) + ONE commit on top with the built dist/ and the Pages Functions (functions/).
+# Cloudflare Pages is deployed separately by the workflow (wrangler pages deploy); this branch is the public build snapshot.
 # The build commit never changes workflow files, so CI can push it with GITHUB_TOKEN. History stays at 2 commits.
 #   deploy/push-site.sh              # CI and normal use
 #   deploy/push-site.sh --new-base   # after editing .github/workflows/refresh.yml on main (needs a token with workflow scope)
@@ -26,7 +27,7 @@ else
   cmp -s .github/workflows/refresh.yml "$ROOT/.github/workflows/refresh.yml" ||
     echo "::warning::refresh.yml on main differs from site-base; run deploy/push-site.sh --new-base locally"
 fi
-cp -a "$ROOT/dist/." . && cp -a "$ROOT/deploy/vercel/." .
+cp -a "$ROOT/dist/." . && cp -a "$ROOT/functions" .
 printf '# Layoff Tracker: built site\n\nGenerated hourly from the `main` branch by deploy/push-site.sh. Do not edit here.\n' > README.md
 git add -A
 c=$(git commit-tree "$(git write-tree)" -p site-base -m "Site build $(date -u +%Y-%m-%dT%H:%MZ) from main@$src")

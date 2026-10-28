@@ -48,17 +48,15 @@ Requirements: Python 3.11+ and Pillow (for share cards). Everything else is stdl
 - `site/static/`: CSS, JS, fonts. `research/notes.md`: competitor and source research; `research/sources-by-country.md`: coverage per country; `research/scale.md`: run costs and the full-coverage extrapolation
 - `data/` (gitignored): SQLite DB and HTTP cache. `dist/` (gitignored): build output
 
-## Deploy (GitHub Actions + Vercel, hourly)
+## Deploy (GitHub Actions + Cloudflare Pages free plan, hourly)
 
-Repo: https://github.com/barath-uni/layoff-tracker. Branches: `main` = source; `site` (the default branch) = the tag `site-base` (only the workflow file) plus ONE force-pushed commit holding the built site (`dist/`), the Vercel functions (`deploy/vercel/api/`) and `vercel.json`, so the repo stays small. Vercel's Git integration deploys every push to `site`; `main` is not deployed (`vercel.json` on main).
+Live: https://layoff-tracker.pages.dev (Cloudflare Pages project `layoff-tracker`, direct upload, free plan only: no Workers Paid, no paid add-ons, no card). Repo: https://github.com/barath-uni/layoff-tracker. Branches: `main` = source; `site` (the default branch) = the tag `site-base` (only the workflow file) plus ONE force-pushed commit holding the built site (`dist/`) and `functions/`, a public snapshot of what is deployed.
 
-`.github/workflows/refresh.yml` runs every hour (and on demand: Actions → refresh → Run workflow): restore `data/` (SQLite DB + HTTP cache) from the Actions cache, `python -m radar all`, save the cache, then `deploy/push-site.sh` force-pushes `site` with `GITHUB_TOKEN`. SEC EDGAR is fetched at most once a day (`LR_DAILY=edgar`: skipped while its last successful run is under 23 h old); all other sources run hourly. Scheduled workflows run from the default branch, so `site` carries the workflow file through `site-base`; it always checks out `main` for the code. After editing `refresh.yml` on main, run `deploy/push-site.sh --new-base` locally (GITHUB_TOKEN may not push workflow files).
+`.github/workflows/refresh.yml` runs every hour (and on demand: Actions → refresh → Run workflow): restore `data/` (SQLite DB + HTTP cache) from the Actions cache, `python -m radar all`, save the cache, `npx wrangler@3 pages deploy dist --project-name=layoff-tracker --branch=main` from the repo root (uploads `dist/` plus the Pages Functions in `functions/`; only changed files are uploaded), then `deploy/push-site.sh` force-pushes `site` with `GITHUB_TOKEN`. SEC EDGAR is fetched at most once a day (`LR_DAILY=edgar`: skipped while its last successful run is under 23 h old); all other sources run hourly. Scheduled workflows run from the default branch, so `site` carries the workflow file through `site-base`; it always checks out `main` for the code. After editing `refresh.yml` on main, run `deploy/push-site.sh --new-base` locally (GITHUB_TOKEN may not push workflow files).
 
-Repo settings: variable `SITE_URL` (default `https://layoff-tracker.vercel.app`; change it if Vercel gives another domain) and optional secret `LR_CONTACT` (SEC User-Agent contact; defaults to the repo URL). Nothing else is needed.
+Repo settings: secrets `CLOUDFLARE_API_TOKEN` (Account → Cloudflare Pages → Edit, Account → D1 → Edit) and `CLOUDFLARE_ACCOUNT_ID`; variable `SITE_URL` = `https://layoff-tracker.pages.dev` (share links and OG tags; change it when a custom domain is added); optional secret `LR_CONTACT` (SEC User-Agent contact; defaults to the repo URL).
 
-Vercel (once): Add New → Project → import `barath-uni/layoff-tracker` → Framework Preset "Other", no build command → Deploy.
-
-Sign-ups on Vercel: `deploy/vercel/api/` only logs sign-ups and events to the function logs (Vercel → project → Logs); `/api/stats` answers 501. TODO: Upstash Redis. The Cloudflare function below is kept for reference.
+Manual deploy from a local build: `set -a; . ./.env; set +a; CLOUDFLARE_ACCOUNT_ID=… npx wrangler@3 pages deploy dist --project-name=layoff-tracker --branch=main` (`.env` holds `CLOUDFLARE_API_TOKEN`, git-ignored; wrangler 3 runs on Node 18).
 
 ## Sign-up gate (a demand test, not a paywall)
 
@@ -74,11 +72,10 @@ Endpoints (same routes locally and on Cloudflare):
 
 Locally, `python3 -m radar serve` handles these routes itself and writes `data/signups.jsonl` and `data/counts.json` (both gitignored). Check demand with `curl http://127.0.0.1:8000/api/stats`.
 
-On Cloudflare, `functions/` deploys together with `dist/` (the workflow runs `wrangler pages deploy dist` from the repo root, which picks up `functions/`). One-time setup in the Cloudflare dashboard:
-1. **Storage (pick one).** D1 (recommended): *Storage & Databases → D1 → Create*, e.g. `layoff-signups`. Or KV: *Workers KV → Create namespace*.
-2. **Bind it to the Pages project:** *Workers & Pages → (project) → Settings → Bindings → Add*: a D1 database with variable name **`DB`**, or a KV namespace with variable name **`SIGNUPS`**. If both are bound, D1 is used. Tables create themselves on the first request.
-3. **Variables** (*Settings → Variables and Secrets*, as secrets): **`STATS_KEY`** (any long random string; needed to read `/api/stats`) and, optionally, **`HASH_SALT`** (salts the hashed IPs used for rate limiting; raw IPs are never stored).
-4. Redeploy (run the workflow once) so the bindings apply. Then: `curl "https://yourdomain.com/api/stats?key=$STATS_KEY"`.
-   Export emails: `npx wrangler d1 execute layoff-signups --remote --command "SELECT email, created_at, src FROM signups"`.
+On Cloudflare, `functions/` deploys together with `dist/`. Current setup (all free tier):
+- **D1** database `layoff-signups` (free: 5 GB, 5M row reads/day) bound to the Pages project as **`DB`** (production and preview). Tables create themselves; the schema was also applied once by hand.
+- **`STATS_KEY`** is a Pages secret (Settings → Variables and Secrets). A copy lives in the local, git-ignored `.env` as `STATS_KEY`; to rotate it, set a new value in Cloudflare and `.env`, then redeploy (run the workflow).
+- Read demand: `set -a; . ./.env; set +a; curl "https://layoff-tracker.pages.dev/api/stats?key=$STATS_KEY"`. Export emails: `npx wrangler@3 d1 execute layoff-signups --remote --command "SELECT email, created_at, src FROM signups"` (Cloudflare dashboard → D1 → layoff-signups → Console works too).
+- Optional secret `HASH_SALT` salts the hashed IPs used for rate limiting (raw IPs are never stored).
 
-Without a binding, `/api/signup` answers 503 and the form shows the error, so set storage up before launch.
+Without a D1 (`DB`) or KV (`SIGNUPS`) binding the function degrades gracefully: `/api/signup` still answers `{ok:true}` to the visitor and `console.log`s the sign-up (Workers & Pages → project → Functions → Real-time logs), `/api/event` answers ok, `/api/stats` answers 501. To (re)create D1 the API token needs "Account → D1 → Edit": create the free D1 db, bind it as `DB`, redeploy.
