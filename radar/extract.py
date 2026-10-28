@@ -4,7 +4,7 @@ Regex first. An optional LLM hook (radar/llm.py) can fill in items the rules mis
 """
 import re
 
-from .ref import ALIASES, KNOWN, TIER_WEIGHT, US_STATES, country_from_text, industry_from_text
+from .ref import ALIASES, JUNK_NAMES, KNOWN, TIER_WEIGHT, US_STATES, country_from_text, industry_from_text
 from .util import slugify
 
 # ------------------------------------------------------------------ building blocks
@@ -31,17 +31,19 @@ RX_PCT = re.compile(r"(\d+(?:\.\d+)?)\s*(?:%|percent|per\s+cent)\s+of\s+(?:its\s
 
 KEYWORD = re.compile(r"(?i)lay(?:s|ing)?\s*off|laid off|layoff|job cuts|cut(?:s|ting)? .{0,30}(jobs|workforce|staff|employees|workers|positions|roles)|redundanc|workforce reduction|eliminat\w+ .{0,25}(jobs|positions|roles)|slash\w* .{0,20}(jobs|workforce|staff)|shed\w* .{0,20}jobs|axe\w* .{0,20}jobs|furlough")
 ROUNDUP = re.compile(r"(?i)\b(tracking|tracker|list of|these companies|companies (?:that|which|cutting|laying)|and others|roundup|so far this year|all the (?:job|layoff)|biggest layoffs of|every company|here are|here's who|which companies|layoffs? this week|week in layoffs|hit this week|in history)\b")
-NEGATIVE = re.compile(r"(?i)\b(block layoffs|blocks layoffs|no layoffs|without layoffs|rules? out|denies|won't lay|will not lay|avoid(?:s|ed)? layoffs|not planning|reverses?|rehir\w+|hiring spree|lawsuit|sued|sues|settlement)\b")
+NEGATIVE = re.compile(r"(?i)\b(block layoffs|blocks layoffs|no layoffs|without layoffs|rules? out|denies|won't lay|will not lay|avoid(?:s|ed)? layoffs|not planning|reverses?|rehir\w+|hiring spree|lawsuit|sued|sues|settlement|cancel(?:s|led|ed)?\s+(?:\w+\s+){0,2}(?:plans?\s+(?:to|for)\s+)?(?:lay|layoffs?|job cuts)|scraps?\s+(?:\w+\s+){0,2}(?:layoffs?|job cuts)|calls? off|walks? back|fact.?check|false claim|fake news)\b")
 SPECULATIVE = re.compile(r"(?i)\b(reportedly|report says|sources say|sources said|considering|weighs|weighing|mulls|could|may|might|rumou?r|according to (?:a )?report|eyes|looming|soon|expected to|likely to|set to face|braces for|fears?|at risk|in jeopardy|threatened)\b|\?|[:\-–] report$")
 PROTEST = re.compile(r"(?i)\b(protest\w*|rall(?:y|ies|ied)|march(?:es|ed)? against|strike|strikes|picket\w*|demonstrat\w*)\b")
 # Numbers that describe the past or a multi-year target, not this event.
-RETRO = re.compile(r"(?i)\b(in (?:the )?(?:past|last) (?:\w+ )?(?:years?|months?)|over (?:the )?(?:past|last)|in (?:two|three|four|five|six|seven|eight|ten|\d+) months|in (?:a|one|the) year|since 20\d\d|so far|last year|this year|in 20\d\d|in FY ?\d+|in total|total|cumulative|to date|years? of|over the years|year-to-date|ytd)\b")
+RETRO = re.compile(r"(?i)\b(in (?:the )?(?:past|last) (?:\w+ )?(?:years?|months?)|over (?:the )?(?:past|last)|in (?:two|three|four|five|six|seven|eight|ten|\d+) months|in (?:a|one|the) year|since 20\d\d|so far|last year|this year|in 20\d\d|in FY ?\d+|in total|total|total of|cumulative|to date|years? of|over the years|year-to-date|ytd|already|so far|until now|thus far)\b")
 # A future, multi-year target ("by 2030", "over the next three years"): an announced plan, shown but never counted.
 PLAN = re.compile(r"(?i)\b(?:by|through|until|before|by the end of|by end of)\s+(?:the\s+)?(?:end\s+of\s+)?(?:fiscal\s+(?:year\s+)?|FY\s?)?(20\d\d)\b|"
                   r"\b(?:over|in|within|during) the (?:next|coming|following) (?:\w+ )?years\b|\bby the end of the decade\b|\bmulti-?year\b|"
                   r"\bover (?:two|three|four|five|six|seven|eight|ten|\d+) years\b|\bin (?:two|three|four|five|\d+) years\b")
 # Past tense without an auxiliary usually recaps an earlier round ("Amazon Laid Off 30,000 Workers While ...").
 PAST_RECAP = re.compile(r"(?i)(?<!has )(?<!have )(?<!had )(?<!been )(?<!be )(?<!to )(?<!will )\b(laid off|slashed|eliminated|axed)\s+(?:about |around |roughly |nearly |over |more than )?\d")
+# "UPS Cut 48,000 Jobs and Doubled Down on Automation": a bare "cut N jobs" joined to another past-tense verb is a recap.
+PAST_CUT_AND = re.compile(r"(?i)\bcut\s+(?:about |around |roughly |nearly |over |more than )?\d[\d,.]*\s*[kK]?\s+\w+\s+(?:and|while|but|then)\s+(?!will\b)\w+ed\b")
 NUM_CUTOFF = re.compile(r"(?i)\b(after|following|on top of|since|having|months after|weeks after|than)\b")
 BUYOUT = re.compile(r"(?i)\b(buyouts?|voluntary (?:separation|exit|redundancy|retirement)|early retirement)\b")
 
@@ -114,6 +116,7 @@ def clean_company(name):
     name = re.split(r"\s+/\s+", name)[0]  # WARN multi-site: "Maverick Washington LLC / Palace Casino"
     name = re.sub(r"(?i)(,?\s+(?:inc|llc|corp|ltd)\.?)\s+\S.*$", r"\1", name)  # "Uber Technologies, Inc. 1725 3rd Street"
     name = re.sub(r"^\S+-(?:owned|backed|based)\s+", "", name)
+    name = re.sub(r"(?i)^.+?\s+(?:rivals?|competitor|peer)\s+(?=\S)", "", name)  # "Ford Rival VW" -> "VW"
     name = re.sub(r"\s*\(.*?\)\s*", " ", name).strip()
     for _ in range(3):
         name = LEGAL_SUFFIX.sub("", name).strip(" ,.")
@@ -231,7 +234,7 @@ def numbers(text, year=None):
         text = text[: m.start()]
     horizon = plan_horizon(text, year)
     past_year = year and any(int(y) < year for y in re.findall(r"(?<!\d)(20\d\d)(?!\d)", text))
-    if not horizon and (RETRO.search(text) or PAST_RECAP.search(text) or past_year):
+    if not horizon and (RETRO.search(text) or PAST_RECAP.search(text) or PAST_CUT_AND.search(text) or past_year):
         return None, None
     hc = pct = None
     for rx in (RX_COUNT, RX_COUNT2):
@@ -377,6 +380,8 @@ def claims_from_item(it, gazetteer=None, llm=None, intl_gaz=None):
         ex = llm(it["title"], it.get("text", ""))
     if not ex:
         return None
+    if canonical_slug(ex["company"]) in JUNK_NAMES or ex["company"].lower().strip() in JUNK_NAMES:
+        return None  # a product, game or outlet label, not an employer ("GTA 6公司4700人", "Vídeo não mostra ...")
     if ex.get("speculative"):
         w *= 0.6
     return {"company": ex["company"], "headcount": ex.get("headcount"), "pct": ex.get("pct"), "kind": ex.get("kind", "layoff"),

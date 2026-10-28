@@ -6,12 +6,13 @@ from datetime import date
 
 from .extract import canonical_slug, claims_from_item, extract_headline, is_title_case
 from .llm import get_llm
-from .ref import KNOWN
+from .ref import KNOWN, PRIOR_FIGURES
 
 JOIN_GAP = 14      # days between consecutive claims of one event
 MAX_SPAN = 60      # max days an event can span
 ECHO_GAP = 45      # number-less follow-up coverage within this many days folds into the previous event
 VISIBLE_MIN = 0.5
+STALE_DAYS = 60    # a company+number first reported more than this many days earlier is a re-citation, not a new event
 WORKFORCE = re.compile(r"(?i)\b(workforce|reduction in force|employees|positions|headcount|jobs|staff|personnel|team members|severance)\b")
 
 
@@ -186,6 +187,12 @@ def _headcount(cl):
     news = [(c["headcount"], c["weight"], c["speculative"]) for c in cl
             if c["tier"] != "official" and c["headcount"] and c["kind"] != "buyout"
             and not any(abs(c["headcount"] - b) <= 0.05 * b for b in buyouts)]
+    # A figure most outlets frame as a rumour ("could", "report says", "传", "pertimbangkan") stays a rumour even where
+    # one outlet drops the hedge.
+    def _near(a, b):
+        return abs(a - b) <= 0.05 * b
+    news = [x for x in news if not x[2] and sum(1 for y in news if y[2] and _near(y[0], x[0]))
+            <= sum(1 for y in news if not y[2] and _near(y[0], x[0]))]
     news = [x for x in news if not x[2]]  # rumours and hypotheticals never set the number
     news = [(v, w) for v, w, _ in news]
     if len(news) >= 3:
@@ -224,6 +231,25 @@ def _additive(cl):
     news = [c for c in cl if c["tier"] != "official"]
     hits = sum(1 for c in news if ADDITIVE.search(c["title"] or ""))
     return bool(news) and hits >= max(1, 0.3 * len(news))
+
+
+def _drop_stale_numbers(claims, slug):
+    """Past or cumulative totals are not new events: a news number equal to a figure announced before the window
+    (ref.PRIOR_FIGURES), or to one this company already had reported more than STALE_DAYS earlier, is dropped."""
+    prior = PRIOR_FIGURES.get(slug, ())
+    first = []
+    for c in sorted(claims, key=lambda c: c["date"]):
+        v = c["headcount"]
+        if not v or c["tier"] == "official":
+            continue
+        if any(abs(v - p) <= 0.02 * p for p in prior):
+            c["headcount"], c["repeat"] = None, 1
+            continue
+        seen = next((dt for pv, dt in first if abs(v - pv) <= 0.05 * pv), None)
+        if seen is None:
+            first.append((v, d(c["date"])))
+        elif (d(c["date"]) - seen).days > STALE_DAYS:
+            c["headcount"], c["repeat"] = None, 1
 
 
 def _dedupe_company(clusters):
@@ -374,6 +400,7 @@ def build_events(con):
             Counter(c["country"] for c in claims if c["country"] and "multi" not in c["country"]) or \
             Counter(c["src_country"] for c in claims if c["src_country"])  # last resort: where the outlets are
         co_country = known[2] if known else (cty_votes.most_common(1)[0][0] if cty_votes else "Unknown")
+        _drop_stale_numbers(claims, slug)
         for cl in _dedupe_company(_cluster(claims)):
             conf, n_pub = _score(cl)
             has_off = any(c["tier"] == "official" for c in cl)

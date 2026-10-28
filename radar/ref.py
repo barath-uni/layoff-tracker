@@ -288,6 +288,33 @@ KNOWN = {
     "flock-safety": ("Flock Safety", "Technology", "United States", ["flocksafety.com"]),
 }
 
+# The ~100 biggest global employers (radar/i18n_names.py): HQ country and industry, existing rows above win.
+from .i18n_names import GLOBAL as _GLOBAL  # noqa: E402
+for _slug, (_name, _ind, _cty, _) in _GLOBAL.items():
+    KNOWN.setdefault(_slug, (_name, _ind, _cty, []))
+
+# Words that get extracted as an employer but never are one: products, games, video/fact-check labels, outlet names.
+JUNK_NAMES = {"gta", "gta-6", "gta-vi", "grand-theft-auto", "iphone", "chatgpt", "vision-pro", "siri", "playstation", "xbox",
+              "video", "videos", "foto", "fotos", "finans", "finance", "haber", "news", "breaking", "live", "fact-check", "trt"}
+
+# Figures announced BEFORE the data window that outlets keep re-citing ("UPS Cut 48,000 Jobs and Doubled Down on
+# Automation", July 2026, is UPS's 2025 total). A news number within 2% of one of these is a recap, not a new event.
+PRIOR_FIGURES = {
+    "ups": (48000, 20000, 30000),            # 2025 total; Apr 2025 plan; Jan 2026 plan
+    "amazon": (14000, 16000, 30000, 27000),  # Oct 2025; Jan 2026; their sum; 2022-23 total
+    "microsoft": (15000, 9000, 6000, 10000),  # 2025 total; Jul 2025; May 2025; Jan 2023
+    "intel": (24000, 15000),                 # 2025; Aug 2024
+    "verizon": (13000,),                     # Nov 2025
+    "accenture": (11000,),                   # Sep 2025
+    "tcs": (12000, 12261),                   # Jul 2025
+    "nestle": (16000,),                      # Oct 2025 plan
+    "meta": (3600, 21000, 11000),            # Feb 2025; 2022-23 total; Nov 2022
+    "google": (12000,),                      # Jan 2023
+    "salesforce": (4000,),                   # Sep 2025 support cuts
+    "audi": (7500,),                         # Mar 2025 plan (by 2029)
+    "ford": (7000,),                         # 2019 salaried cuts
+}
+
 ALIASES = {
     "airbaltic": "air-baltic", "24hr-homecare": "24-hour-home-care", "o-briens-market": "o-brien-s-market",
     "alphabet": "google", "meta-platforms": "meta", "facebook": "meta", "amazon-com": "amazon", "aws": "amazon",
@@ -299,7 +326,7 @@ ALIASES = {
     "nestle-s-a": "nestle", "wisetech-global": "wisetech", "the-washington-post": "washington-post", "federal-express": "fedex", "jlr": "jaguar-land-rover", "amex": "american-express", "jack-dorsey": "block",
     "mark-zuckerberg": "meta", "andy-jassy": "amazon", "sundar-pichai": "google", "satya-nadella": "microsoft",
     "square": "block", "volvo": "volvo-cars", "national-australia-bank": "nab", "commonwealth-bank": "cba", "bat": "british-american-tobacco", "stanchart": "standard-chartered", "vw-group": "volkswagen",
-    "volkswagen-group": "volkswagen", "bmw-group": "bmw", "mercedes": "mercedes-benz", "deutsche-bahn": "db-cargo", "kaiser": "kaiser-permanente", "electronic-arts": "ea", "universal-music": "universal-music-group", "united-parcel-service": "ups", "snap-inc": "snap", "block-inc": "block",
+    "volkswagen-group": "volkswagen", "bmw-group": "bmw", "mercedes": "mercedes-benz", "deutsche-bahn": "db-cargo", "kaiser": "kaiser-permanente", "electronic-arts": "ea", "universal-music": "universal-music-group", "united-parcel-service": "ups", "snap-inc": "snap", "block-inc": "block", "mcdonald-s": "mcdonalds", "ex-ilva": "ilva", "aigi": "ilva", "acciaierie-d-italia": "ilva", "jaguar-landrover": "jaguar-land-rover",
 }
 
 US_STATES = ("Alabama|Alaska|Arizona|Arkansas|California|Colorado|Connecticut|Delaware|Florida|Georgia|Hawaii|Idaho|"

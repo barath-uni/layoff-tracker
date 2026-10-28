@@ -119,9 +119,9 @@ lang("es",
      job=r"empleos|empleados|trabajadores|puestos|personas|despidos|plazas|colaboradores|empleadas|trabajadoras",
      at=r"(?:despidos|ere|erte|recortes|despido masivo|despido colectivo)\s+(?:en|de)",
      spec=r"podría|estudia|plantea|\bsegún\b|amenaz|rumor|teme|temen|baraja|analiza|\?|en riesgo|peligro|prevé|preocupación|incertidumbre",
-     past=r"\bdesde\b|en total|el año pasado|\ben 20\d\d|\bya\b|en lo que va",
+     past=r"\bdesde\b|en total|el año pasado|\ben 20\d\d|\bya\b|en lo que va|tras (?:eliminar|despedir|recortar)|en un año",
      plan=r"(?:hasta|para|antes de)\s+(?:finales\s+de\s+|el\s+)?(20\d\d)|en los próximos (?:\w+ )?años",
-     neg=r"sin despidos|no habrá despidos|descarta|contrat|tribunal|juez|anula|readmi|improceden|nulo",
+     neg=r"sin despidos|no habrá despidos|descarta|desmient|\bniega\b|contrat|tribunal|juez|anula|readmi|improceden|nulo",
      roundup=r"estas empresas|lista|ola de|las empresas que|oleada",
      mult={"mil": 1000, "millones": 1_000_000},
      pctw=r"plantilla|personal|empleados|trabajadores|fuerza laboral",
@@ -141,7 +141,7 @@ lang("pt",
      spec=r"poderá|\bpode\b|estuda|avalia|\bsegundo\b|ameaç|rumor|teme|risco|\?|prevê|possível",
      past=r"\bdesde\b|no total|ano passado|\bem 20\d\d|\bjá\b",
      plan=r"\baté\s+(?:o\s+fim\s+de\s+|20)?(20\d\d|\d\d)\b|nos próximos (?:\w+ )?anos",
-     neg=r"sem demissões|\bnão\b(?:\s+\S+){0,3}\s+(?:demitiu|demite|fechou)|desmente|\bnega\b|descarta|contrat|greve|justiça|tribunal|reintegr|suspende",
+     neg=r"sem demissões|não mostra|\bTRT\b|rejeita|mantém suspensa|é falso|é fake|boato|checagem|\bnão\b(?:\s+\S+){0,3}\s+(?:demitiu|demite|fechou)|desmente|\bnega\b|descarta|contrat|greve|justiça|tribunal|reintegr|suspende",
      roundup=r"essas empresas|lista|onda de|as empresas que|empresas que",
      mult={"mil": 1000, "milhões": 1_000_000},
      pctw=r"funcionários|quadro|força de trabalho|empregados|colaboradores|pessoal",
@@ -256,8 +256,8 @@ lang("fi",
 
 lang("cs", kw=r"propouš|propust|hromadné propouštění|zruší\s+(?:\S+\s+){0,2}míst|rušení míst|škrty",
      job=r"zaměstnanc\w*|lidí|pracovních míst|pracovník\w*|míst|lidi",
-     spec=r"\bmůže\b|zvažuje|\bpodle\b|hrozí|\?", past=r"\bod roku\b|celkem|loni", plan=r"\bdo\s+(?:roku\s+)?(20\d\d)",
-     neg=r"bez propouštění|nabírá|stávka|soud", pctw=r"zaměstnanců|pracovníků", stop="propouštění vláda česko firmy stávka")
+     spec=r"\bmůže\b|zvažuj|zvažoval|\bpodle\b|hrozí|\?|mělo týkat|měl týkat", past=r"\bod roku\b|celkem|loni", plan=r"\bdo\s+(?:roku\s+)?(20\d\d)",
+     neg=r"bez propouštění|nabírá|stávka|soud", mult={"tisíc": 1000, "tis": 1000}, pctw=r"zaměstnanců|pracovníků", stop="propouštění vláda česko firmy stávka")
 lang("hu", kw=r"leépít|elbocsát|kirúg|munkahely\w* szűn", job=r"dolgozó\w*|munkahely\w*|ember\w*|munkavállaló\w*|főt\b|fő\b",
      spec=r"\blehet\b|fontolgat|szerint|\?", past=r"tavaly|összesen", plan=r"(20\d\d)-ig", neg=r"nincs leépítés|felvesz|sztrájk|bíróság",
      pctw=r"dolgozó\w*|munkavállaló\w*", stop="leépítés elbocsátás kormány magyarország cégek")
@@ -269,7 +269,7 @@ lang("el", kw=r"απολύσ|περικοπ\w* θέσεων|καταργ\w* θέ
      spec=r"ενδέχεται|εξετάζει|σύμφωνα|\?", past=r"πέρυσι|συνολικά", neg=r"χωρίς απολύσεις|προσλήψεις|απεργία",
      stop="απολύσεις κυβέρνηση ελλάδα")
 lang("tr", kw=r"işten çıkar|işçi çıkar|personel çıkar|çalışan\w* çıkar|toplu çıkış|kadro\w* daralt|istihdam\w* azalt",
-     job=r"çalışan\w*|işçi\w*|personel\w*|kişi\w*|kişiyi", spec=r"iddia|olabilir|gündem|\?|kulis|hazırlanıyor|söylenti",
+     job=r"çalışan\w*|işçi\w*|personel\w*|kişi\w*|kişiyi", spec=r"iddia|olabilir|gündem|\?|kulis|hazırlanıyor|söylenti|risk altında|tehlike|tehdit|uyarı",
      past=r"\bgeçen yıl|toplamda|20\d\d'de|20\d\d yılında", plan=r"(20\d\d)'?(?:e|a|ye|ya) kadar",
      neg=r"işten çıkarma yok|işe alım|alım yapacak|grev|mahkeme", mult={"bin": 1000},
      pctw=r"çalışan\w*|personel\w*|işgücü\w*", stop="işten çıkarma işçiler hükümet türkiye şirketler sektör grev yeni")
@@ -286,7 +286,7 @@ lang("uk", kw=r"скороч|звільн|масов\w* звільн|оптим�
      pctw=r"працівник\w*|персонал\w*|штат\w*", stop="скорочення звільнення уряд україна компанії")
 lang("id", kw=r"\bphk\b|pemutusan hubungan kerja|merumahkan|pengurangan (?:karyawan|pegawai|pekerja)|pangkas\w*\s+(?:\S+\s+){0,2}(?:karyawan|pegawai)",
      job=r"karyawan|pekerja|buruh|pegawai|orang|staf|tenaga kerja", at=r"(?:phk|pemutusan hubungan kerja|pengurangan karyawan)\s+(?:di|karyawan)",
-     spec=r"kabarnya|dikabarkan|\bbisa\b|berpotensi|terancam|\bisu\b|\?|kemungkinan|bakal",
+     spec=r"kabarnya|dikabarkan|\bbisa\b|berpotensi|terancam|\bisu\b|\?|kemungkinan|bakal|pertimbang|sempat|wacana|rencanakan",
      past=r"\bsejak\b|sepanjang|total|tahun lalu|selama 20\d\d", plan=r"(?:hingga|sampai)\s+(20\d\d)",
      neg=r"tidak ada phk|tak ada phk|bantah|membantah|rekrut|lowongan|mogok|pengadilan|gugat", mult={"ribu": 1000, "rb": 1000},
      pctw=r"karyawan|pegawai|pekerja", articles="pt",
@@ -300,19 +300,19 @@ lang("vi", kw=r"sa thải|cắt giảm (?:\S+\s+){0,2}(?:nhân sự|nhân viên|
      mult={"nghìn": 1000, "ngàn": 1000}, pctw=r"nhân viên|nhân sự|lao động",
      stop="sa thải lao động chính phủ việt nam doanh nghiệp công ty làn sóng hàng loạt")
 lang("ja", kw=r"人員削減|希望退職|早期退職|リストラ|解雇|人員整理|削減.{0,6}(?:人|名)|(?:人|名).{0,4}削減|雇い止め|工場閉鎖|"
-               r"拠点閉鎖|退職者.{0,4}募集", job="", spec=r"検討|方針|調整|観測|報道|か$|か[\s　|｜]|も$|恐れ|可能性|浮上|へ調整",
+               r"拠点閉鎖|退職者.{0,4}募集", job="", spec=r"検討|方針|調整|観測|報道|[?？]|か$|か[\s　|｜]|も$|恐れ|可能性|浮上|へ調整",
      past=r"累計|これまで|昨年|前年|上半期|1-9月|1～9月", plan=r"(20\d\d)年(?:度)?(?:まで|末まで)|(\d+)年(?:間)?で",
-     neg=r"採用|撤回|否定|雇用維持|雇用を守", roundup=r"まとめ|一覧|相次ぐ|続々|企業[数は]|社に|社で|上場企業|何社")
+     neg=r"採用|撤回|否定|雇用維持|雇用を守|中止|見送", roundup=r"まとめ|一覧|相次ぐ|続々|企業[数は]|社に|社で|上場企業|何社")
 lang("zh", kw=r"裁员|裁員|人员优化|大裁员|优化\d|毕业|裁撤|减员|減員|关闭工厂|關閉工廠|解雇|遣散", job="",
-     spec=r"传|傳|曝|据悉|據悉|或将|或將|可能|消息称|消息稱|网传|網傳|传闻|傳聞|考虑|考慮|[?？]|疑似|否认|否認",
+     spec=r"传|傳|曝|据悉|據悉|曾计划|曾計劃|曾考虑|曾考慮|或将|或將|可能|消息称|消息稱|网传|網傳|传闻|傳聞|考虑|考慮|[?？]|疑似|否认|否認",
      past=r"累计|累計|此前|去年|今年以来|今年以來|迄今|已裁", plan=r"到(20\d\d)年|(20\d\d)年前|未来\w*年",
-     neg=r"辟谣|闢謠|招聘|扩招|擴招|不裁员|不裁員|否认裁员|否認裁員|仲裁",
+     neg=r"辟谣|闢謠|招聘|扩招|擴招|不裁员|不裁員|否认裁员|否認裁員|仲裁|取消裁|取消.{0,16}(?:裁员|裁員)|叫停|撤回|放弃裁|放棄裁",
      roundup=r"盘点|盤點|汇总|匯總|多家|一览|一覽|潮$|潮[，,]|大厂们|們")
 lang("ko", kw=r"구조조정|희망퇴직|감원|정리해고|인력 감축|인원 감축|해고|명예퇴직|권고사직", job="",
-     spec=r"검토|가능성|전망|관측|설\b|우려|[?？]|추진하나", past=r"누적|지난해|올해 들어|그동안", plan=r"(20\d\d)년까지",
-     neg=r"채용|부인|없다|철회", roundup=r"줄줄이|잇따라|잇단|업계 전반")
+     spec=r"검토|가능성|전망|관측|설\b|우려|[?？]|추진하나|땐|할 경우|하면", past=r"누적|지난해|올해 들어|그동안|감원 이어|이어 또|줄이고도|잘랐는데|넘게 잘랐", plan=r"(20\d\d)년까지",
+     neg=r"채용|부인|없다|철회|취소", roundup=r"줄줄이|잇따라|잇단|업계 전반")
 lang("hi", kw=r"छंटनी|छँटनी|नौकरी से निकाल|नौकरियां? (?:खत्म|गईं)|बर्खास्त|ले-?ऑफ|लेऑफ", job=r"कर्मचारि\w*|लोगों|नौकरि\w*|कर्मी\w*|employees",
-     spec=r"सकती|सकता|संभव|खबर|रिपोर्ट|\?", past=r"पिछले साल|अब तक|कुल", plan=r"(20\d\d) तक", neg=r"भर्ती|नहीं होगी छंटनी",
+     spec=r"सकती|सकता|संभव|खबर|रिपोर्ट|\?", past=r"पिछले साल|अब तक|अबतक|पहले ही|कुल", plan=r"(20\d\d) तक", neg=r"भर्ती|नहीं होगी छंटनी",
      mult={"हजार": 1000, "हज़ार": 1000, "लाख": 100_000})
 lang("bn", kw=r"ছাঁটাই|চাকরিচ্যুত", job=r"কর্মী\w*|জন", spec=r"\?", mult={"হাজার": 1000})
 lang("th", kw=r"เลิกจ้าง|ปลดพนักงาน|ปลดคน|ลดพนักงาน", job=r"พนักงาน|คน|ราย", spec=r"พิจารณา|อาจ|\?", mult={"พัน": 1000})
@@ -326,7 +326,7 @@ ultima oră ultima ora orang kena kemnaker kemnaker catat cơn заява виї
 korban sebanyak lebih tekstil es wo ur state kalsel jatim jateng jabar jakarta angka dona eeuu ee.uu milei naver pt ms rs n.j""".split()) | {
     "ultima oră", "orang kena", "kemnaker catat", "у росії", "в россии"}
 # A name containing any of these words is wording, not an employer ("50 Ribu Pekerja Terdampak PHK", "BMW Pracę").
-REJECT_TOKENS = set("""ribu pekerja kemnaker korban sebanyak pelatihan terdampak kena tenaga disnaker disnakertrans pemprov
+REJECT_TOKENS = set("""tembus ritirare ribu pekerja kemnaker korban sebanyak pelatihan terdampak kena tenaga disnaker disnakertrans pemprov
 pracę eeuu ee.uu dione""".split())
 # Lower-case word counts per language, filled by consensus.build_claims from the corpus itself.
 VOCAB = {}
@@ -373,6 +373,13 @@ SCRIPT_NAMES = {
     "クアルコム": "Qualcomm", "ネットフリックス": "Netflix", "폭스바겐": "Volkswagen", "오라클": "Oracle", "넷플릭스": "Netflix",
     "디즈니": "Disney", "나이키": "Nike", "퀄컴": "Qualcomm", "Майкрософт": "Microsoft", "Яндекс": "Yandex", "Сбер": "Sber", "Сбербанк": "Sber", "Газпром": "Gazprom",
 }
+
+# Multilingual alias map (radar/i18n_names.py): native-script spellings of the top global employers -> English name.
+from .i18n_names import GLOBAL as _GLOBAL  # noqa: E402
+for _name, _ind, _cty, _sp in _GLOBAL.values():
+    for _k in _sp.split("|"):
+        if _k and not _k.isascii():
+            SCRIPT_NAMES.setdefault(_k.strip(), _name)
 
 COUNTRY_WORDS = set("""deutschland frankreich österreich schweiz italien spanien europa usa china japan indien amerika
 france allemagne espagne italie europe états-unis chine inde japon belgique suisse canada québec
@@ -466,6 +473,8 @@ def numbers_cjk(t, code):
             after, before = t[m.end():m.end() + 4], t[max(0, m.start() - 4):m.start()]
             if "対象" in after or "対象" in before or "規模か" in after:
                 continue  # an eligibility pool ("6万人対象") is not a cut
+            if re.match(r"\s*(?:の)?(?:季節)?(?:雇用|採用|新規)", t[m.end():m.end() + 6]):
+                continue  # a hiring figure ("10万人の季節雇用")
             v = float(m.group(1).replace(",", "")) * {"万": 10_000, "千": 1000}.get(m.group(2), 1)
             if 3 <= v <= 500_000:
                 hc = max(hc or 0, int(v))
@@ -475,6 +484,9 @@ def numbers_cjk(t, code):
             pct = float(m.group(1))
     elif code == "zh":
         for m in re.finditer(r"(\d[\d,]*(?:\.\d+)?)\s*(万|千)?\s*(?:余|多)?\s*(?:名|人|位)(?:员工|員工)?", t):
+            if re.match(r"\s*(?:的)?(?:季节|季節)?(?:招聘|招募|雇用|新增)", t[m.end():m.end() + 6]) or \
+                    re.search(r"(?:招聘|招募|聘用)\s*$", t[max(0, m.start() - 4):m.start()]):
+                continue  # a hiring figure
             v = float(m.group(1).replace(",", "")) * {"万": 10_000, "千": 1000}.get(m.group(2), 1)
             if 3 <= v <= 500_000:
                 hc = max(hc or 0, int(v))
@@ -485,6 +497,8 @@ def numbers_cjk(t, code):
         for m in re.finditer(r"(\d[\d,]*(?:\.\d+)?)\s*(만|천)?\s*명", t):
             if "대상" in t[m.end():m.end() + 4]:
                 continue  # eligibility pool
+            if re.match(r"\s*(?:을|를)?\s*(?:신규\s*)?(?:채용|고용)", t[m.end():m.end() + 6]):
+                continue  # a hiring figure
             v = float(m.group(1).replace(",", "")) * {"만": 10_000, "천": 1000}.get(m.group(2), 1)
             if 3 <= v <= 500_000:
                 hc = max(hc or 0, int(v))
@@ -664,6 +678,10 @@ def company_cjk(seg, code):
     if not cand:
         return None, None
     cand = cand.strip(" 「」『』《》〈〉\"'“”‘’・")
+    cand = re.sub(r"^(?:揭秘|独家|獨家|重磅|突发|突發|曝光|快讯|快訊|消息|惊爆|驚爆|震惊|震驚|最新|热点|熱點)", "", cand)
+    m = re.match(r"^([A-Za-z][A-Za-z0-9&.\-]+)(?=[^\x00-\u024f])", cand)
+    if m and len(m.group(1)) >= 2:
+        cand = m.group(1)  # "JLR啟動" -> "JLR", "Uber突然大" -> "Uber"
     if code == "zh" and " " in cand:
         cand = cand.split()[-1]
     if not cand or cand in CJK_STOP or len(cand) < 2 or re.search(r"\d", cand):
@@ -691,6 +709,7 @@ class Gazetteer:
             if k in t:
                 hits.append(SCRIPT_NAMES[k])
                 break
+        t = re.sub(r"(?<=[A-Za-z0-9])(?=[^\x00-\u024f\s])|(?<=[^\x00-\u024f\s])(?=[A-Za-z0-9])", " ", t)
         toks = re.findall(r"[^\W_][\w&+.'’-]*", t)
         toks = [x.rstrip(".'’-") for x in toks]
         best = []
@@ -709,6 +728,8 @@ class Gazetteer:
 
 
 # ------------------------------------------------------------------ entry point
+OUTLET_SUFFIX = re.compile(r"(?:\s*[:|｜\-–—]\s*(?:네이버|다음|NAVER|Daum)\s*(?:블로그|포스트|카페|뉴스)|\s*[:|｜\-–—]\s*티스토리|"
+                           r"\s+[-–—|]\s+[^-–—|]*(?:haberlerinin doğru adresi|Finans Haber|Haber Merkezi)[^-–—|]*)+\s*$", re.I)
 def extract(title, code, gaz=None, year=None):
     L = R.get(code)
     if not L or not title:
@@ -719,6 +740,7 @@ def extract(title, code, gaz=None, year=None):
         return None
     if (L["neg"] and L["neg"].search(t)) or (L["roundup"] and L["roundup"].search(t)):
         return None
+    t = OUTLET_SUFFIX.sub("", t).strip()
     segs = [s.strip() for s in re.split(r"\s*[:|｜]\s*|\s+[-–—]\s+", t) if s.strip()]
     prefix = segs[0] if len(segs) > 1 and len(segs[0].split()) <= 3 else None  # "Tamedia: 400 Personen ..."
     segs.sort(key=lambda s: 0 if L["kw"].search(s) else 1)
