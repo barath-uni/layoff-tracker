@@ -63,3 +63,5 @@
 3. **Accuracy (weeks 2–4):** optional LLM pass for headlines the rules miss, a maintainer review queue for merges and aliases, a public changelog of corrections.
 4. **Distribution (month 2):** auto-post the weekly card, embeddable counter widget, per-industry and per-country landing pages.
 5. **Community (month 3+):** consensus-based corrections (flags as low-weight claims, applied only with a qualifying source), alerts by company or industry, a public API.
+
+- Rumoured label: show rumour-only events (e.g. Meta, Oct 2026) with a visible "Rumoured / unconfirmed" badge, no headcount, out of all totals. Today rumours already never set a number; the badge is not built yet.

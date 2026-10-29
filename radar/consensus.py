@@ -195,6 +195,8 @@ def _headcount(cl):
             <= sum(1 for y in news if not y[2] and _near(y[0], x[0]))]
     news = [x for x in news if not x[2]]  # rumours and hypotheticals never set the number
     news = [(v, w) for v, w, _ in news]
+    # A 10,000+ figure from a single outlet ("Meta確認裁員22000人") is not enough to put a mass layoff on the board.
+    news = [(v, w) for v, w in news if v < 10000 or sum(1 for u, _ in news if abs(u - v) <= 0.05 * v) >= 2]
     if len(news) >= 3:
         med = weighted_median(news)
         shown = [v for v, _ in news if med / 4 <= v <= med * 4]
@@ -411,6 +413,11 @@ def build_events(con):
             country = co_country
             kinds = {c["kind"] for c in cl if c["kind"] != "plan"} or {"layoff"}
             kind = "buyout" if kinds == {"buyout"} else ("closure" if kinds == {"closure"} else "layoff")
+            # A voluntary-exit offer: most numbered coverage says "voluntary"; the rest just omits it. Hidden, never counted.
+            buy_pubs = {c["pubkey"] for c in cl if c["kind"] == "buyout" and c["headcount"]}
+            num_all = {c["pubkey"] for c in cl if c["headcount"] and c["tier"] != "official"}
+            if not has_off and buy_pubs and len(buy_pubs) >= 0.5 * len(num_all):
+                kind = "buyout"
             # An announced multi-year plan: enough of the coverage gives the deadline ("by 2030"); the rest just omits it.
             plan_pubs = {c["pubkey"] for c in cl if c["kind"] == "plan" and not c["speculative"]}
             num_pubs = {c["pubkey"] for c in cl if (c["headcount"] or c["pct"]) and c["tier"] != "official"}

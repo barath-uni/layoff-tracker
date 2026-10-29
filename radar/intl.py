@@ -260,7 +260,7 @@ lang("cs", kw=r"propouš|propust|hromadné propouštění|zruší\s+(?:\S+\s+){0
      neg=r"bez propouštění|nabírá|stávka|soud", mult={"tisíc": 1000, "tis": 1000}, pctw=r"zaměstnanců|pracovníků", stop="propouštění vláda česko firmy stávka")
 lang("hu", kw=r"leépít|elbocsát|kirúg|munkahely\w* szűn", job=r"dolgozó\w*|munkahely\w*|ember\w*|munkavállaló\w*|főt\b|fő\b",
      spec=r"\blehet\b|fontolgat|szerint|\?", past=r"tavaly|összesen", plan=r"(20\d\d)-ig", neg=r"nincs leépítés|felvesz|sztrájk|bíróság",
-     pctw=r"dolgozó\w*|munkavállaló\w*", stop="leépítés elbocsátás kormány magyarország cégek")
+     mult={"ezer": 1000}, pctw=r"dolgozó\w*|munkavállaló\w*", stop="leépítés elbocsátás kormány magyarország cégek")
 lang("ro", kw=r"concedi|disponibiliz|reduce\w*\s+(?:\S+\s+){0,2}(?:posturi|personal)|desființ\w*\s+(?:\S+\s+){0,2}posturi",
      job=r"angajați|angajaţi|locuri de muncă|salariați|oameni|persoane|posturi|angajaților", spec=r"\bar putea\b|analizează|\bpotrivit\b|\?",
      past=r"\bdin 20\d\d|în total|anul trecut", plan=r"până în (20\d\d)", neg=r"fără concedieri|angajează|grevă|instanț",
@@ -427,7 +427,7 @@ def _to_int(num, mult_word=None, mults=None):
             return None
     if mult_word:
         mw = mult_word.lower().rstrip(".")
-        for k, m in (mults or {}).items():
+        for k, m in sorted((mults or {}).items(), key=lambda km: -len(km[0])):  # "millones" before "mil"
             if mw.startswith(k):
                 v *= m
                 break
@@ -442,7 +442,7 @@ def numbers_latin(t, L):
         return None, None
     mults = L["mult"]
     mw = "|".join(re.escape(k) for k in sorted(mults, key=len, reverse=True))
-    mw_rx = rf"(?:\s*(?P<m>{mw})\.?)?" if mw else ""
+    mw_rx = rf"(?:\s*(?P<m>{mw})\w{{0,3}}\.?)?" if mw else ""  # inflected multipliers: "60 тысячам", "60 ezer"
     rx = re.compile(rf"(?<![\d.,])(?P<n>{SEP_NUM}){mw_rx}\s+(?:\S+\s+){{0,2}}?(?:{L['job']})\b", re.I)
     hc = None
     for m in rx.finditer(t):

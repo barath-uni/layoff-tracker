@@ -296,6 +296,19 @@ for _slug, (_name, _ind, _cty, _) in _GLOBAL.items():
 # Words that get extracted as an employer but never are one: products, games, video/fact-check labels, outlet names.
 JUNK_NAMES = {"gta", "gta-6", "gta-vi", "grand-theft-auto", "iphone", "chatgpt", "vision-pro", "siri", "playstation", "xbox",
               "video", "videos", "foto", "fotos", "finans", "finance", "haber", "news", "breaking", "live", "fact-check", "trt"}
+# Nationality adjectives and country names that a subject parser takes for the employer ("İngiliz ilaç devi" = "British
+# drug giant"; "Reino Unido"): the real company is named elsewhere or not at all.
+JUNK_NAMES |= set("""ingiliz alman amerikan fransiz japon cinli koreli italyan ispanyol hollandali isvecli rus turk
+british german american french japanese chinese korean italian spanish dutch swedish indian canadian australian european
+britische britischer deutsche deutscher amerikanische amerikanischer franzosische japanische chinesische
+britannique allemand allemande americain americaine francais japonais chinois
+britanico britanica aleman alemana estadounidense frances francesa japones japonesa chino
+britannico tedesco tedesca americano americana francese giapponese cinese
+britanico britanica alemao alema americano frances japones chines
+brytyjski niemiecki amerykanski francuski britse duitse amerikaanse franse
+reino-unido estados-unidos alemania francia espana regno-unito stati-uniti germania
+ghost ghost-of-yotei mass-effect canarias motilla
+베트남 미국 중국 일본 한국 독일 영국 프랑스 인도 대만 越南 美国 中国 日本 韩国 德国 英国 法国 印度 ベトナム 米国 中国 韓国 ドイツ 英国""".split())
 
 # Figures announced BEFORE the data window that outlets keep re-citing ("UPS Cut 48,000 Jobs and Doubled Down on
 # Automation", July 2026, is UPS's 2025 total). A news number within 2% of one of these is a recap, not a new event.
@@ -316,6 +329,7 @@ PRIOR_FIGURES = {
 }
 
 ALIASES = {
+    "flutter-entertainment": "flutter",
     "airbaltic": "air-baltic", "24hr-homecare": "24-hour-home-care", "o-briens-market": "o-brien-s-market",
     "alphabet": "google", "meta-platforms": "meta", "facebook": "meta", "amazon-com": "amazon", "aws": "amazon",
     "amazon-web-services": "amazon", "gm": "general-motors", "international-business-machines": "ibm",

@@ -353,6 +353,55 @@ def item_lang(it):
     return "en"
 
 
+# ------------------------------------------------------------------ cross-language rules (title of any language)
+# The company denies the cuts ("Porsche dément vouloir en supprimer 4 000 de plus", "Soriana aclara ..."): no claim.
+DENIAL = re.compile(r"(?i)\b(?:denies|denied|deny|refutes|niega|desmiente|aclara|dementiert|dementi\w*|dément\w*|démenti\w*|"
+                    r"smentisc\w*|smentit\w*|desmente|nega|membantah|bantah|zaprzecza|dementuje|ontkent|yalanla\w*|"
+                    r"опроверг\w*|отрица\w*|спростов\w*)\b|否认|否認|辟谣|闢謠")
+# Workers WON protection from layoffs ("1900 salariés de Blizzard obtiennent de nouvelles garanties"): not a layoff.
+PROTECTED = re.compile(r"(?i)job protections?|protections? (?:from|against)|won protections|\bgaranties\b|\bgarantías\b|\bgaranzie\b|"
+                       r"защиту от увольн|захист від звільн|kündigungsschutz|beschäftigungsgarantie|jobgarantie")
+# A voluntary-exit offer ("plan de départs volontaires pour 60 000", "6만명 희망퇴직"): kind buyout, shown nowhere, never counted.
+VOLUNTARY = re.compile(r"(?i)\b(?:voluntar\w*|volontai\w*|volontari\w*|freiwillig\w*|vrijwillig\w*|dobrowoln\w*|önkéntes\w*|"
+                       r"добровольн\w*|добровільн\w*|gönüllü\w*|sukarela|early retirement|buyouts?)\b|희망퇴직|希望退職|早期退職|自愿离职|自願離職")
+# Cuts by a contractor/outsourcer of a named firm ("Meta外包商裁員", "empresa de moderadores vinculada a Meta"): not that firm.
+CONTRACTOR = re.compile(r"(?i)empresa de moderador\w*|\bmoderadores\b|contratista|subcontrat\w*|sous-traitan\w*|subunternehm\w*|"
+                        r"外包商|外包公司|下請け|협력업체|(?:contractor|subcontractor|vendor|outsourcer)\s+(?:for|of|to|linked to|working for)\b|"
+                        r"['’]s\s+(?:contractor|vendor|outsourcer)")
+# Somebody demands cuts ("Porsche y Piëch exigen cierres y 50.000 despidos"): a demand, not an announced figure.
+DEMAND = re.compile(r"(?i)\b(?:exig\w+|demands?|demanding|fordern|fordert|réclam\w+|calls? for|urges?)\b")
+# A staff count, not the cut ("despidos en España, donde cuenta con 2.000 trabajadores").
+STAFF = re.compile(r"(?i)(?:cuenta con|donde (?:emplea|tiene|trabajan)|emplea a|conta com|qui emploie|which employs|that employs|"
+                   r"where it employs|employs|has a workforce of|beschäftigt|impiega|plantilla de)\s+(?:a\s+|unos\s+|about\s+|rund\s+|más de\s+)?"
+                   r"(\d{1,3}(?:[.,\s]\d{3})+|\d+)")
+
+
+# The cuts were averted ("para evitar 150 demissões", "esuberi scongiurati"): no layoff.
+AVERTED = re.compile(r"(?i)\b(?:evitar|avoid(?:ing|s)?|evitare|éviter|vermeiden)\s+(?:(?:as|os|the|i|les|los|las|die)\s+)?"
+                     r"(?:\d|layoffs|job cuts|demiss|despid|licenzia|licenci|entlass)|\bscongiurat\w*|\babgewendet\b")
+# News briefs list several firms; the subject parser grabs the wrong one ("En bref: Sunrise confirme ..., Google ...").
+BRIEFS = re.compile(r"(?i)^\s*(?:en bref|in brief|news in brief|briefs?|kurz gemeldet|in breve)\s*[:\-–]")
+# The firm is only the medium ("CEO que despidió a 900 empleados por Zoom").
+MEDIUM = re.compile(r"(?i)\b(?:por|via|over|on a|by|en)\s+zoom\b|因zoom|透過zoom")
+
+
+def cross_language_rules(title, ex):
+    """Apply the rules above to an extraction; return the adjusted dict, or None to drop the claim."""
+    t = title or ""
+    if DENIAL.search(t) or PROTECTED.search(t) or CONTRACTOR.search(t) or AVERTED.search(t) or BRIEFS.search(t):
+        return None
+    if canonical_slug(ex["company"]) == "zoom" and MEDIUM.search(t):
+        return None
+    if VOLUNTARY.search(t):
+        ex["kind"] = "buyout"
+    if ex.get("headcount") and DEMAND.search(t):
+        ex["headcount"] = None
+    for m in STAFF.finditer(t):
+        if ex.get("headcount") == int(re.sub(r"\D", "", m.group(1))):
+            ex["headcount"] = None
+    return ex
+
+
 def claims_from_item(it, gazetteer=None, llm=None, intl_gaz=None):
     """Turn a stored item row (dict with parsed meta) into a claim dict or None."""
     meta = it["meta"]
@@ -382,6 +431,9 @@ def claims_from_item(it, gazetteer=None, llm=None, intl_gaz=None):
         return None
     if canonical_slug(ex["company"]) in JUNK_NAMES or ex["company"].lower().strip() in JUNK_NAMES:
         return None  # a product, game or outlet label, not an employer ("GTA 6公司4700人", "Vídeo não mostra ...")
+    ex = cross_language_rules(it["title"], dict(ex))
+    if not ex:
+        return None
     if ex.get("speculative"):
         w *= 0.6
     return {"company": ex["company"], "headcount": ex.get("headcount"), "pct": ex.get("pct"), "kind": ex.get("kind", "layoff"),
