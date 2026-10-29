@@ -141,6 +141,59 @@ def clean_company(name):
     return name
 
 
+# Descriptors that outlets put before or after an employer's name, in many languages ("Navigatiebedrijf TomTom",
+# "la compañía Telefónica", "il gruppo Stellantis", "der Konzern Bosch", "Telekomjätten Ericsson", "Bosch-Konzern").
+# Stripped so every spelling lands on one slug instead of splitting one layoff into several hidden events.
+DESC_WORDS = set("""chipmaker chip-maker automaker carmaker drugmaker retailer tech-giant conglomerate startup firm company
+empresa compañía compania fabricante constructora aerolínea aerolinea gigante multinacional
+colosso società societa azienda produttore costruttore compagnia
+géant geant constructeur équipementier equipementier fabricant entreprise société societe firme enseigne compagnie
+konzern unternehmen hersteller autobauer firma riese
+bedrijf concern fabrikant gigant reus producent techbedrijf
+koncern koncernen bolaget jätten selskab selskabet konsernet companhia montadora
+şirket şirketi devi spółka společnost yhtiö""".split())
+DESC_GROUP = set("grupo gruppo groupe gruppe groep group grupa".split())  # "Grupo Bimbo" is a name; "el grupo X" is not
+ARTICLES = set("the el la los las le les il lo gli der die das den de het een o os as".split())
+DESC_SUFFIX = re.compile(r"(?i)^[\w-]{3,}(?:bedrijf|concern|fabrikant|producent|gigant|giganten|reus|keten|konzern|hersteller|bauer|"
+                         r"riese|zulieferer|unternehmen|jätten|jätte|koncernen|bolaget|selskab|selskabet|konsernet|maker|makers|macher)$")
+DESC_NATION = NATIONALITY | set("""nederlandse duitse amerikaanse franse britse zweedse japanse chinese belgische deutsche deutscher
+amerikanische französische britische schwedische japanische chinesische estadounidense alemana alemán francesa británica
+japonesa china americana tedesco tedesca francese britannico giapponese cinese américain américaine allemand allemande
+français française britannique japonais japonaise chinois néerlandais néerlandaise svenska amerikanska tyska""".split())
+DESC_TRAIL = {"konzern", "gruppe", "groep", "groupe", "gruppo", "grupo", "giant", "firm", "company", "concern", "bedrijf"}
+
+
+def _is_desc(tok, nxt=None, lead=True):
+    low = re.sub(r"^l['’]", "", tok.lower().strip(":,"))
+    if low in DESC_WORDS or DESC_SUFFIX.match(low):
+        return True
+    if nxt is None:
+        return False
+    if low in ARTICLES:  # an article only goes together with a descriptor: "la compañía X", not "La Poste"
+        return _is_desc(nxt, None) or nxt.lower() in DESC_GROUP
+    return low in DESC_NATION and _is_desc(nxt, None)  # "Dutch chipmaker", "Deutsche Autobauer", not "Deutsche Bank"
+
+
+def strip_descriptor(name):
+    """'Navigatiebedrijf TomTom' -> 'TomTom', 'Il gruppo Stellantis' -> 'Stellantis', 'Bosch-Konzern' -> 'Bosch'."""
+    if not name or canonical_slug(name) in KNOWN:
+        return name
+    toks = name.split()
+    while len(toks) > 1 and _is_desc(toks[0], toks[1]):
+        group_next = toks[0].lower() in ARTICLES and toks[1].lower() in DESC_GROUP
+        toks.pop(0)
+        if group_next and len(toks) > 1:
+            toks.pop(0)
+    if toks and re.match(r"(?i)^l['’]\S", toks[0]) and len(toks) > 1:
+        toks[0] = toks[0][2:]
+    while len(toks) > 1 and toks[-1].lower() in DESC_TRAIL:
+        toks.pop()
+    if len(toks) == 1:
+        toks[0] = re.sub(r"(?i)-(?:konzern|gruppe|groep|concern|bedrijf|chef|aktie)$", "", toks[0])
+    out = " ".join(toks).strip(" ,.:")
+    return out if len(out) >= 2 else name
+
+
 def canonical_slug(name):
     s = slugify(name)
     return ALIASES.get(s, s)
@@ -429,6 +482,10 @@ def claims_from_item(it, gazetteer=None, llm=None, intl_gaz=None):
         ex = llm(it["title"], it.get("text", ""))
     if not ex:
         return None
+    ex = dict(ex, company=strip_descriptor(ex["company"]))
+    toks = ex["company"].split()
+    if any(_is_desc(t) for t in toks) and all(_is_desc(t) or t.lower() in DESC_NATION for t in toks):
+        return None  # only a descriptor ("Defense Giant", "Deutscher Internet-Gigant"): the employer is not named
     if canonical_slug(ex["company"]) in JUNK_NAMES or ex["company"].lower().strip() in JUNK_NAMES:
         return None  # a product, game or outlet label, not an employer ("GTA 6公司4700人", "Vídeo não mostra ...")
     ex = cross_language_rules(it["title"], dict(ex))
