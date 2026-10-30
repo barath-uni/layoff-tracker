@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Methodology: Layoff Tracker</title>
+<meta name="description" content="How Layoff Tracker turns filings, WARN notices and news into sourced consensus numbers.">
+<link rel="canonical" href="https://layoff-tracker.pages.dev/methodology/">
+<meta property="og:type" content="website"><meta property="og:site_name" content="Layoff Tracker">
+<meta property="og:title" content="Methodology: Layoff Tracker"><meta property="og:description" content="How Layoff Tracker turns filings, WARN notices and news into sourced consensus numbers.">
+<meta property="og:url" content="https://layoff-tracker.pages.dev/methodology/"><meta property="og:image" content="https://layoff-tracker.pages.dev/og/home.png">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="Methodology: Layoff Tracker">
+<meta name="twitter:description" content="How Layoff Tracker turns filings, WARN notices and news into sourced consensus numbers."><meta name="twitter:image" content="https://layoff-tracker.pages.dev/og/home.png">
+<meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Crect%20width%3D%2224%22%20height%3D%2224%22%20rx%3D%226%22%20fill%3D%22%2305060a%22/%3E%3Cpath%20d%3D%22M3%2013h3l2.2-5.5%203.6%2010%202.2-5.5H16%22%20fill%3D%22none%22%20stroke%3D%22%23eef0f4%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3Ccircle%20cx%3D%2219%22%20cy%3D%2212%22%20r%3D%222.3%22%20fill%3D%22%23ff4d4a%22/%3E%3C/svg%3E">
+<link rel="preload" href="/static/fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/style.css">
+<script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(_){}</script>
+</head><body class="">
+<div class="bar"><header class="wrap top">
+  <a class="brand" href="/"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M1.5 13H6l2.6-6.5 4.2 12 2.6-6.5H18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.6" cy="12" r="2.4" fill="#ff4d4a"/></svg><span>Layoff Tracker</span></a>
+  <nav class="nav"><a href="/">Globe</a><a href="/insights/">Insights</a><a href="/companies/">Companies</a><a class="hide-sm" href="/methodology/">Methodology</a>
+  <button class="icon-btn" type="button" data-theme-toggle aria-label="Toggle dark mode"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg></button></nav>
+</header></div>
+<main class="wrap"><div class="prose">
+<h1>Methodology</h1>
+<p>Layoff Tracker counts layoffs from public records and reporting. It never estimates numbers that no source has stated.
+Every figure on the site links to the sources it came from.</p>
+<h2>Sources</h2><ul><li><strong>News: Google News, 43 country editions in local languages</strong>: 15,470 items</li><li><strong>News: Google News, English (last 3 months)</strong>: 2,901 items</li><li><strong>Hacker News</strong>: 358 items</li><li><strong>WARN: California</strong>: 307 items</li><li><strong>Reddit r/layoffs</strong>: 138 items</li><li><strong>WARN: Washington</strong>: 61 items</li><li><strong>WARN: Maryland</strong>: 26 items</li><li><strong>WARN: Pennsylvania</strong>: 20 items</li><li><strong>WARN: Colorado</strong>: 12 items</li><li><strong>India: NSE corporate announcements</strong>: 9 items</li><li><strong>Japan: TDnet timely disclosures</strong>: 9 items</li></ul>
+<p>Official sources are SEC 8-K filings under Item 2.05 (exit or disposal activities), state WARN notices
+(California, Maryland, Texas, Pennsylvania, Colorado, Washington), Japan's TDnet disclosures and India's NSE announcements.
+News comes from Google News in 43 country editions (the ~40 largest economies), searched with layoff wording in each local language
+(Stellenabbau, licenciements, despidos, demissões, esuberi, ontslagen, 希望退職, 裁员, 구조조정, छंटनी, PHK and more). Hacker News and r/layoffs are weak signals.
+X and LinkedIn are not used: their APIs are paid or prohibit this use.</p>
+<h2>Languages</h2>
+<p>Headlines in other languages are parsed with the same rules as English ones: a local layoff word, a company, and a number next to a
+local job noun ("1.200 Stellen", "1 200 postes", "3 mil empleos", "2万人"). Rumour wording in each language marks a report as speculative.
+Where an outlet is in one country and the headline names no country, the company is placed in the outlet's country.</p>
+<p>In Japan, firms cut staff through voluntary-retirement programs (希望退職), because dismissals are tightly restricted. A program with a
+stated target or a reported number of leavers counts as a layoff there. The size of the eligible pool ("open to 60,000 staff") never counts.</p>
+<h2>Names and duplicates</h2>
+<p>Products, studios, units and executives often appear in headlines instead of the employer ("Ghost of Yōtei developer Sucker Punch", "Microsoft's Xbox").
+When most of a name's headlines also name a bigger, overlapping story right next to it, both are merged under the employer.</p>
+<h2>From reports to events</h2>
+<p>Each headline is parsed for a company, a headcount or percentage, and a date. Lists, opinion pieces, buyout offers and
+denials are discarded. Reports about the same company within two weeks of each other form one event. Later coverage that repeats
+an earlier figure, or revises it on the same scale, is folded into the original event instead of being counted twice.
+Numbers that describe a past total ("over the past year") are not counted.</p>
+<h2>Announced plans</h2>
+<p>A multi-year target ("35,000 jobs by 2030", "over the next five years") is shown as an <strong>announced plan</strong> with its
+deadline, but it is left out of the live counter and the yearly total (7 plans, 66,046 jobs in the last 3 months).
+We do not spread a plan over its years: companies rarely say how fast it will happen, and much of it is often done through attrition.
+When a round of the plan happens and is reported (a WARN notice, a plant closure, "cuts 1,000 jobs this week"), that round is counted.</p>
+<h2>Consensus number</h2>
+<p>The event's number is the weighted median of the firm claims. Filings outrank news, and news outranks rumour. Figures far from the median
+are ignored. When sources disagree, the page shows the range (for example, "sources say 4,000–15,000"). WARN notices are only a floor:
+they cover one state, so they never lower a company-wide figure. Figures above 50,000 need at least three independent publishers, including a major outlet.
+Rumoured or hypothetical figures never set the number; once a layoff is confirmed, earlier rumour coverage joins that event.</p>
+<h2>Share of staff</h2>
+<p>When sources state a percentage, we show it. Otherwise, for large companies, we divide the headcount by the employee total from the
+company's latest annual report (10-K, 20-F or the company's own annual report, linked in the table source) and mark it with ≈.
+Where the employee total is unknown, we show the count only.</p>
+<h2>The live counter</h2>
+<p>Between hourly data updates, the counter on the front page climbs at the average pace of the last 30 days. It is an estimate, labelled as one,
+and resets to the verified total on every update.</p>
+<h2>Confidence</h2>
+<p>Each source has a weight: official record 1.0, major outlet 0.7, other news 0.45, Hacker News 0.25, Reddit 0.15. Speculative wording
+("reportedly", "may", "could", "sources say") cuts a source's weight by 40%. Confidence = 1 − ∏(1 − weight) over independent publishers.</p>
+<ul><li><strong>Official</strong>: a WARN notice or an SEC filing that mentions the workforce.</li>
+<li><strong>Corroborated</strong>: three or more independent publishers, or two including a major outlet.</li>
+<li><strong>Reported</strong>: two independent publishers.</li></ul>
+<p>Anything weaker is not shown. Single-source stories and social posts on their own never appear, and 8-K restructuring filings that don't mention people are left out.
+In the last 3 months, 326 shown events have no stated headcount. They count as events but add nothing to the totals.</p>
+<h2>Known limits</h2>
+<ul><li>Totals are a floor: many layoffs are never reported, and WARN coverage is limited to six US states for now.</li>
+<li>Country is the company's headquarters unless a filing or the sources say where the cuts happen.</li>
+<li>Headline parsing is rule-based. An optional LLM extractor can be plugged in (<code>LR_LLM_CMD</code>) but is off.</li></ul>
+<p>Data: <a href="/data.json">data.json</a> holds every shown event with its sources. Map places: <a href="https://www.geonames.org/">GeoNames</a> (CC BY 4.0) and OpenStreetMap Nominatim; land outlines: Natural Earth via world-atlas.</p></div></main>
+<footer><div class="wrap"><span>Layoff Tracker tracks layoffs from public filings, WARN notices and news. Every number links to its sources.</span>
+<span><a href="/methodology/">Methodology</a> · <a href="/data.json">Data (JSON)</a></span></div></footer>
+<div class="toast" role="status" aria-live="polite"></div>
+<script src="/static/app.js" defer></script>
+</body></html>
